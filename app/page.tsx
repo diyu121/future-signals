@@ -297,7 +297,7 @@ export default function Page() {
             </p>
 
             <p>
-              Participants receive a forecast score, results of the and can opt in
+              Participants receive a forecast score, results of the experiment, and can opt in
               to appear in the top predictor leaderboard.
             </p>
           </div>
