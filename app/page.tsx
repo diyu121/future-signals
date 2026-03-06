@@ -129,8 +129,7 @@ function Shell({
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-2xl p-8">
-        <h1 className="text-2xl font-semibold">Future Signals</h1>
-
+<h1 className="text-2xl font-semibold mb-4">Future Signals</h1>
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium text-slate-700">
@@ -273,34 +272,46 @@ export default function Page() {
     return (
       <Shell step={step} goBack={goBack} goNext={goNext}>
         <div className="rounded-2xl bg-slate-50 p-6">
-          <h2 className="text-3xl font-semibold text-slate-900">
-            Where AI Experts Disagree
-          </h2>
+         <h2 className="text-3xl font-semibold text-slate-900">
+  Where AI Experts Disagree
+</h2>
 
-          <div className="mt-4 space-y-3 text-sm text-slate-700 max-w-prose">
-            <p>
-              We’re running a short forecasting experiment with leading AI researchers,
-              founders, and investors to see where expert and AI predictions diverge.
-            </p>
+<div className="mt-4 space-y-4 text-sm text-slate-700 max-w-prose">
+  <p className="font-semibold text-slate-900">
+    8 forecasts • ~60 seconds
+  </p>
 
-            <p>
-              It takes about 60 to 90 seconds, just share your quick take on a few
-              burning questions on the future of AI.
-            </p>
+  <p className="font-medium text-slate-900">
+    How accurate are AI experts at predicting the future of AI?
+  </p>
 
-            <p>
-              Results will be published in the inaugural{" "}
-              <span className="font-medium text-slate-900">
-                Future Signals AI Forecast Report
-              </span>
-              .
-            </p>
+  <p>
+    We’re running a short forecasting experiment comparing:
+  </p>
 
-            <p>
-              Participants receive a forecast score, results of the experiment, and can opt in
-              to appear in the top predictor leaderboard.
-            </p>
-          </div>
+  <ul className="list-disc ml-5 space-y-1">
+    <li>expert predictions</li>
+    <li>AI model forecasts</li>
+    <li>areas of disagreement</li>
+  </ul>
+
+  <p>
+    Submit probabilistic predictions on a few key questions about AI progress.
+  </p>
+  <p>
+    Results will appear in the inaugural{" "}
+    <span className="font-medium text-slate-900">
+      Future Signals AI Forecast Report
+    </span>.
+  </p>
+
+  <p>
+    Participants receive a forecast score and can opt to appear on the{" "}
+    <span className="font-medium text-slate-900">
+      AI Forecast Leaderboard
+    </span>.
+  </p>
+</div>
         </div>
 
         <div className="my-8 h-px bg-slate-200" />
@@ -314,7 +325,13 @@ export default function Page() {
         <select
           className="mt-2 w-full border rounded-xl p-3"
           value={s.role}
-          onChange={(e) => setS({ ...s, role: e.target.value })}
+       onChange={(e) => {
+  const role = e.target.value;
+  const updated = { ...s, role };
+  setS(updated);
+
+  if (role && updated.years) setStep("m:0");
+}}
         >
           <option value="">Select</option>
           {ROLES.map((r) => (
@@ -329,7 +346,13 @@ export default function Page() {
         <select
           className="mt-2 w-full border rounded-xl p-3"
           value={s.years}
-          onChange={(e) => setS({ ...s, years: e.target.value })}
+       onChange={(e) => {
+  const years = e.target.value;
+  const updated = { ...s, years };
+  setS(updated);
+
+  if (updated.role && years) setStep("m:0");
+}}
         >
           <option value="">Select</option>
           {YEARS.map((y) => (
