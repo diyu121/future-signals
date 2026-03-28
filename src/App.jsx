@@ -34,164 +34,15 @@ const C = {
   warnBg: "#FFFBEB",
   warnTxt: "#B45309",
   warnBorder: "#FDE68A",
+  overlay: "rgba(15, 23, 42, 0.45)",
 };
 
 const FF = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif";
 
-const SIGNALS = [
-  {
-    id: "open-weight-parity-2027",
-    question:
-      "Will open-weight AI models reach parity with frontier proprietary models before Dec 2027?",
-    category: "AI & ML",
-    resolutionDate: "Dec 31, 2027",
-    contributorCount: 142,
-    combined: 64,
-    human: 58,
-    ai: 71,
-    divergence: 13,
-    signalStrength: "Moderate",
-    verifiedExperts: 38,
-    aiModels: 12,
-  },
-  {
-    id: "arc-agi-human-level-2026",
-    question:
-      "Will a multimodal AI system pass the ARC-AGI benchmark at human level by end of 2026?",
-    category: "AI & ML",
-    resolutionDate: "Dec 31, 2026",
-    contributorCount: 89,
-    combined: 47,
-    human: 38,
-    ai: 61,
-    divergence: 23,
-    signalStrength: "Low",
-    verifiedExperts: 18,
-    aiModels: 8,
-  },
-  {
-    id: "enterprise-code-50pct-2027",
-    question:
-      "Will AI-generated code account for >50% of new enterprise software commits by 2027?",
-    category: "AI & ML",
-    resolutionDate: "Dec 31, 2027",
-    contributorCount: 203,
-    combined: 72,
-    human: 68,
-    ai: 77,
-    divergence: 9,
-    signalStrength: "Strong",
-    verifiedExperts: 54,
-    aiModels: 10,
-  },
-  {
-    id: "agents-multiday-2026",
-    question:
-      "Will AI agents complete unassisted multi-day work tasks in production environments by end of 2026?",
-    category: "AI & ML",
-    resolutionDate: "Dec 31, 2026",
-    contributorCount: 118,
-    combined: 55,
-    human: 49,
-    ai: 63,
-    divergence: 14,
-    signalStrength: "Moderate",
-    verifiedExperts: 22,
-    aiModels: 7,
-  },
-  {
-    id: "eu-ai-act-withdrawal-2026",
-    question:
-      "Will the EU AI Act lead to a major model withdrawal from the EU market by 2026?",
-    category: "Policy",
-    resolutionDate: "Dec 31, 2026",
-    contributorCount: 67,
-    combined: 31,
-    human: 35,
-    ai: 24,
-    divergence: 11,
-    signalStrength: "Low",
-    verifiedExperts: 12,
-    aiModels: 5,
-  },
-  {
-    id: "safety-pause-2027",
-    question:
-      "Will a major AI lab announce an emergency safety pause due to an unexpected capability jump?",
-    category: "Safety",
-    resolutionDate: "Dec 31, 2027",
-    contributorCount: 94,
-    combined: 22,
-    human: 27,
-    ai: 15,
-    divergence: 12,
-    signalStrength: "Low",
-    verifiedExperts: 16,
-    aiModels: 6,
-  },
-];
-
 const LEADERBOARD = [
-  {
-    rank: 1,
-    name: "Dr. Sarah Chen",
-    type: "Human",
-    domain: "AI Research",
-    accuracy: "87%",
-    calibration: "0.82",
-    reputation: 94,
-    influence: "High",
-  },
-  {
-    rank: 2,
-    name: "GPT-Research v4",
-    type: "AI",
-    domain: "General",
-    accuracy: "91%",
-    calibration: "0.89",
-    reputation: 91,
-    influence: "High",
-  },
-  {
-    rank: 3,
-    name: "Claude-Analyst",
-    type: "AI",
-    domain: "General",
-    accuracy: "90%",
-    calibration: "0.87",
-    reputation: 90,
-    influence: "High",
-  },
-  {
-    rank: 4,
-    name: "Marcus Webb",
-    type: "Human",
-    domain: "ML Engineering",
-    accuracy: "83%",
-    calibration: "0.79",
-    reputation: 88,
-    influence: "Medium",
-  },
-  {
-    rank: 5,
-    name: "Prof. James Liu",
-    type: "Human",
-    domain: "AI Safety",
-    accuracy: "85%",
-    calibration: "0.81",
-    reputation: 86,
-    influence: "Medium",
-  },
-  {
-    rank: 6,
-    name: "Gemini-Forecast",
-    type: "AI",
-    domain: "General",
-    accuracy: "88%",
-    calibration: "0.85",
-    reputation: 85,
-    influence: "Medium",
-  },
+  { rank: 1, name: "Dr. Sarah Chen", type: "Human", domain: "AI Research", accuracy: "87%", calibration: "0.82", reputation: 94, influence: "High" },
+  { rank: 2, name: "GPT-Research v4", type: "AI", domain: "General", accuracy: "91%", calibration: "0.89", reputation: 91, influence: "High" },
+  { rank: 3, name: "Claude-Analyst", type: "AI", domain: "General", accuracy: "90%", calibration: "0.87", reputation: 90, influence: "High" },
 ];
 
 const AI_MODELS = [
@@ -212,12 +63,6 @@ const AI_MODELS = [
     role: "Momentum and ecosystem tracker",
     strengths: "Market trajectory, open-weight movement, product release synthesis",
     score: 85,
-  },
-  {
-    name: "Internal Ensemble",
-    role: "Blended AI baseline",
-    strengths: "Consensus estimate across multiple model perspectives",
-    score: 88,
   },
 ];
 
@@ -273,6 +118,15 @@ const CHART_DATA = [
   { date: "Jan '26", human: 57, ai: 70, combined: 63, high: 68 },
   { date: "Mar '26", human: 58, ai: 71, combined: 64, high: 69 },
 ];
+
+function getProbabilityLabel(p) {
+  if (p === 0) return "NO";
+  if (p === 25) return "NO-LEANING";
+  if (p === 50) return "UNCERTAIN";
+  if (p === 75) return "YES-LEANING";
+  if (p === 100) return "YES";
+  return "CUSTOM";
+}
 
 function useBreakpoint() {
   const [width, setWidth] = useState(
@@ -357,7 +211,7 @@ function MetaPill({ label, value, highlight = false }) {
   );
 }
 
-function TopNav({ page, onNav }) {
+function TopNav({ page, onNav, currentUser, onSignOut }) {
   const { isMobile } = useBreakpoint();
   const items = [
     ["index", "Signals"],
@@ -365,6 +219,11 @@ function TopNav({ page, onNav }) {
     ["models", "AI Models"],
     ["methodology", "Methodology"],
   ];
+
+  const userLabel =
+    currentUser?.user_metadata?.first_name ||
+    currentUser?.email ||
+    "Account";
 
   return (
     <nav
@@ -418,7 +277,9 @@ function TopNav({ page, onNav }) {
           >
             FS
           </div>
-          <span style={{ fontSize: 18, fontWeight: 700, color: C.txt }}>Future Signals</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: C.txt }}>
+            Future Signals
+          </span>
         </button>
 
         {!isMobile && (
@@ -446,20 +307,32 @@ function TopNav({ page, onNav }) {
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto" }}>
-          {!isMobile && (
-            <button
-              style={{
-                border: "none",
-                background: "none",
-                color: C.txt2,
-                fontSize: 14,
-                cursor: "pointer",
-                fontFamily: FF,
-              }}
-            >
+          {currentUser ? (
+            <>
+              {!isMobile && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    background: C.borderL,
+                    color: C.txt,
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  {userLabel}
+                </div>
+              )}
+              <button onClick={onSignOut} style={secondaryBtn}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button onClick={() => onNav("login")} style={secondaryBtn}>
               Log in
             </button>
           )}
+
           <button onClick={() => onNav("submit")} style={primaryBtn}>
             Submit Forecast
           </button>
@@ -566,6 +439,7 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {filtered.map((signal) => {
           const hasContributed = !!userForecasts[signal.id];
+          const myForecast = userForecasts[signal.id];
 
           return (
             <Card key={signal.id} style={{ padding: isMobile ? 18 : 26 }}>
@@ -644,22 +518,42 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
                         fontFamily: FF,
                         fontSize: 15,
                         color: C.txt2,
-                        marginBottom: 22,
+                        marginBottom: hasContributed ? 12 : 22,
                       }}
                     >
                       <div>
                         <span style={{ color: C.human }}>●</span> Human{" "}
-                        <strong style={{ color: C.humanTxt }}>{signal.human}%</strong>
+                        <strong style={{ color: C.humanTxt }}>
+                          {signal.hasHumanData ? `${signal.human}%` : "No data"}
+                        </strong>
                       </div>
                       <div>
                         <span style={{ color: C.ai }}>●</span> AI{" "}
                         <strong style={{ color: C.aiTxt }}>{signal.ai}%</strong>
                       </div>
-                      <div>AI +{Math.abs(signal.ai - signal.human)}pp</div>
+                      <div>
+                        {signal.hasHumanData ? `AI +${Math.abs(signal.ai - signal.human)}pp` : "AI baseline only"}
+                      </div>
                     </div>
 
+                    {hasContributed && (
+                      <div
+                        style={{
+                          fontFamily: FF,
+                          fontSize: 13,
+                          color: C.successTxt,
+                          marginBottom: 14,
+                          fontWeight: 600,
+                        }}
+                      >
+                        Your prediction: {myForecast.probability}% · {myForecast.confidence}
+                      </div>
+                    )}
+
                     <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3 }}>
-                      Resolves {signal.resolutionDate}
+                      {signal.contributorCount === 0
+                        ? "Be the first to forecast"
+                        : `${signal.contributorCount} contributors`} · Resolves {signal.resolutionDate}
                     </div>
                   </div>
 
@@ -887,6 +781,7 @@ function SignalDetailPage({
 }) {
   const { isMobile, isTablet } = useBreakpoint();
   const stackRightRail = isMobile || isTablet;
+  const hasHumanData = liveContributors > 0;
 
   return (
     <div
@@ -936,9 +831,8 @@ function SignalDetailPage({
           }}
         >
           <MetaPill label="Combined Signal" value={`${liveCombined}%`} highlight />
-          <MetaPill label="Human Consensus" value={`${liveHuman}%`} />
+          <MetaPill label="Human Consensus" value={hasHumanData ? `${liveHuman}%` : "No data"} />
           <MetaPill label="AI Consensus" value={`${signal.ai}%`} />
-          <MetaPill label="AI leads by" value={`${Math.abs(signal.ai - liveHuman)}pp`} />
           <MetaPill label="Resolves" value={signal.resolutionDate} />
           <MetaPill label="Contributors" value={liveContributors} />
         </div>
@@ -1010,25 +904,44 @@ function SignalDetailPage({
             </ResponsiveContainer>
           </Card>
 
-          <div
-            style={{
-              marginBottom: 20,
-              border: `1px solid ${C.warnBorder}`,
-              borderRadius: 10,
-              backgroundColor: C.warnBg,
-              padding: "14px 18px",
-              fontFamily: FF,
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.warnTxt, marginBottom: 4 }}>
-              Human / AI Divergence is Elevated
+          {hasHumanData ? (
+            <div
+              style={{
+                marginBottom: 20,
+                border: `1px solid ${C.warnBorder}`,
+                borderRadius: 10,
+                backgroundColor: C.warnBg,
+                padding: "14px 18px",
+                fontFamily: FF,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.warnTxt, marginBottom: 4 }}>
+                Human / AI Divergence is Elevated
+              </div>
+              <div style={{ fontSize: 13, color: "#92400E", lineHeight: 1.55 }}>
+                AI models are <strong>{Math.abs(signal.ai - liveHuman)} points</strong> more
+                optimistic than expert consensus.
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: "#92400E", lineHeight: 1.55 }}>
-              AI models are <strong>{Math.abs(signal.ai - liveHuman)} points</strong> more
-              optimistic than expert consensus. This may reflect AI models weighting
-              benchmark progress more heavily, while experts emphasize deployment quality.
+          ) : (
+            <div
+              style={{
+                marginBottom: 20,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                backgroundColor: C.borderL,
+                padding: "14px 18px",
+                fontFamily: FF,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.txt, marginBottom: 4 }}>
+                No human forecasts yet
+              </div>
+              <div style={{ fontSize: 13, color: C.txt2, lineHeight: 1.55 }}>
+                The current signal is showing the AI baseline only. Be the first to contribute a forecast.
+              </div>
             </div>
-          </div>
+          )}
 
           {userForecast && (
             <div
@@ -1042,7 +955,7 @@ function SignalDetailPage({
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 700, color: C.successTxt, marginBottom: 6 }}>
-                Your Forecast
+                Your Prediction
               </div>
               <div style={{ fontSize: 13, color: C.txt }}>
                 Probability: <strong>{userForecast.probability}%</strong> · Confidence:{" "}
@@ -1112,12 +1025,16 @@ function SignalDetailPage({
                 marginBottom: 14,
               }}
             >
-              AI models are more optimistic than experts. The combined signal remains moderated by expert input.
+              {hasHumanData
+                ? "AI models are more optimistic than experts. The combined signal remains moderated by expert input."
+                : "No human forecasts yet. Current signal reflects the AI baseline only."}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
               <div style={{ padding: "10px 12px", backgroundColor: C.humanBg, borderRadius: 8, textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: C.humanTxt }}>{liveHuman}%</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.humanTxt }}>
+                  {hasHumanData ? `${liveHuman}%` : "—"}
+                </div>
                 <div style={{ fontSize: 11, color: C.humanTxt, marginTop: 2 }}>Human</div>
               </div>
               <div style={{ padding: "10px 12px", backgroundColor: C.aiBg, borderRadius: 8, textAlign: "center" }}>
@@ -1132,7 +1049,7 @@ function SignalDetailPage({
             <StatRow label="AI Models" value={signal.aiModels} />
 
             <button onClick={() => onSubmit(signal)} style={{ ...primaryBtn, width: "100%", marginTop: 14 }}>
-              Submit Forecast
+              {liveContributors === 0 ? "Be the first to forecast" : "Submit prediction"}
             </button>
           </Card>
         </div>
@@ -1143,16 +1060,16 @@ function SignalDetailPage({
 
 function SubmitPage({ signal, onBack, onSave, isSaving }) {
   const { isMobile } = useBreakpoint();
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-  const [probability, setProbability] = useState("");
-  const [confidence, setConfidence] = useState("Moderate");
+  const [probability, setProbability] = useState(50);
+  const [confidence, setConfidence] = useState("Medium confidence");
   const [rationale, setRationale] = useState("");
+
+  const probabilityLabel = getProbabilityLabel(probability);
 
   return (
     <div
       style={{
-        maxWidth: 760,
+        maxWidth: 820,
         margin: "0 auto",
         padding: isMobile ? "28px 16px 44px" : "34px 36px 60px",
       }}
@@ -1161,48 +1078,201 @@ function SubmitPage({ signal, onBack, onSave, isSaving }) {
         ← Back
       </button>
 
-      <Card style={{ marginTop: 20, padding: isMobile ? 18 : 26 }}>
-        <h1 style={{ fontFamily: FF, fontSize: isMobile ? 28 : 34, color: C.txt, margin: "0 0 10px" }}>
-          Submit Forecast
-        </h1>
-        <p style={{ fontFamily: FF, fontSize: 14, color: C.txt2, lineHeight: 1.6, marginBottom: 22 }}>
-          {signal.question}
-        </p>
+      <Card style={{ marginTop: 20, padding: isMobile ? 18 : 34 }}>
+      <div style={{ fontFamily: FF, fontSize: 14, color: "#64748B", marginBottom: 10 }}>
+  {signal.category}
+</div>
 
-        <input
-          placeholder="Your name (optional)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={inputStyle}
-        />
-        <input
-          placeholder="Your role (optional)"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          style={inputStyle}
-        />
-        <input
-          placeholder="Probability (0–100)"
-          value={probability}
-          onChange={(e) => setProbability(e.target.value)}
-          style={inputStyle}
-        />
-        <select value={confidence} onChange={(e) => setConfidence(e.target.value)} style={inputStyle}>
-          <option value="Low">Low</option>
-          <option value="Moderate">Moderate</option>
-          <option value="High">High</option>
-        </select>
-        <textarea
-          placeholder="Why? (optional)"
-          value={rationale}
-          onChange={(e) => setRationale(e.target.value)}
-          rows={5}
-          style={{ ...inputStyle, resize: "vertical" }}
-        />
+<div
+  style={{
+    fontFamily: FF,
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#475569",
+    marginBottom: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  }}
+>
+  Make your prediction
+</div>
+
+<h1
+  style={{
+    fontFamily: FF,
+    fontSize: isMobile ? 34 : 36,
+    fontWeight: 800,
+    color: "#0F172A",
+    margin: "0 0 24px",
+    lineHeight: 1.15,
+    letterSpacing: "-0.02em",
+  }}
+>
+  {signal.question}
+</h1>
+
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: C.txt,
+              marginBottom: 12,
+              fontFamily: FF,
+            }}
+          >
+            How likely is this outcome?
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #1F2937",
+              borderRadius: 24,
+              padding: isMobile ? 20 : 28,
+              background: "#F8FAFC",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: FF,
+                fontSize: 14,
+                color: "#64748B",
+                marginBottom: 10,
+                letterSpacing: "0.04em",
+                fontWeight: 600,
+              }}
+            >
+              {probabilityLabel}
+            </div>
+
+            <div
+              style={{
+                fontFamily: FF,
+                fontSize: isMobile ? 54 : 72,
+                lineHeight: 1,
+                fontWeight: 800,
+                color: C.txt,
+                marginBottom: 20,
+              }}
+            >
+              {probability}%
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+              }}
+            >
+              {[0, 25, 50, 75, 100].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setProbability(p)}
+                  style={{
+                    padding: isMobile ? "12px 16px" : "14px 22px",
+                    borderRadius: 20,
+                    border: "1px solid #CBD5E1",
+                    background: probability === p ? C.ink : "#fff",
+                    color: probability === p ? "#fff" : C.txt,
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontFamily: FF,
+                    fontSize: isMobile ? 16 : 18,
+                    minWidth: isMobile ? 74 : 92,
+                    boxShadow: probability === p ? "0 4px 14px rgba(15,23,42,0.18)" : "none",
+                  }}
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: FF, fontSize: 13, color: C.txt2 }}>
+                Fine-tune:
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={probability}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (Number.isNaN(next)) return;
+                  setProbability(Math.max(0, Math.min(100, next)));
+                }}
+                style={{
+                  width: 88,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${C.border}`,
+                  fontFamily: FF,
+                  fontSize: 15,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: C.txt,
+              marginBottom: 8,
+              fontFamily: FF,
+            }}
+          >
+            How confident are you in this estimate?
+          </div>
+
+          <select value={confidence} onChange={(e) => setConfidence(e.target.value)} style={inputStyle}>
+            <option value="Low confidence">Low confidence</option>
+            <option value="Medium confidence">Medium confidence</option>
+            <option value="High confidence">High confidence</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: C.txt,
+              marginBottom: 8,
+              fontFamily: FF,
+            }}
+          >
+            What’s driving your view? (optional)
+          </div>
+
+          <textarea
+            placeholder="What evidence or intuition matters most here?"
+            value={rationale}
+            onChange={(e) => setRationale(e.target.value)}
+            rows={5}
+            style={{ ...inputStyle, resize: "vertical", marginBottom: 0 }}
+          />
+        </div>
+
+        <div
+          style={{
+            fontFamily: FF,
+            fontSize: 13,
+            color: C.txt2,
+            marginBottom: 14,
+            fontWeight: 500,
+          }}
+        >
+          Your prediction will immediately contribute to the live human signal.
+        </div>
 
         <button
           disabled={isSaving}
-          onClick={() => onSave({ name, role, probability, confidence, rationale })}
+          onClick={() => onSave({ probability, confidence, rationale })}
           style={{
             ...primaryBtn,
             width: "100%",
@@ -1210,9 +1280,192 @@ function SubmitPage({ signal, onBack, onSave, isSaving }) {
             cursor: isSaving ? "not-allowed" : "pointer",
           }}
         >
-          {isSaving ? "Saving..." : "Submit Forecast"}
+          {isSaving ? "Saving..." : "Submit Prediction"}
         </button>
       </Card>
+    </div>
+  );
+}
+
+function AuthGate({
+  authMode,
+  setAuthMode,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  firstName,
+  setFirstName,
+  lastName,
+  setLastName,
+  role,
+  setRole,
+  onClose,
+  onContinue,
+  onForgotPassword,
+  authStatus,
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: C.overlay,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        zIndex: 100,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 520,
+          background: "#fff",
+          borderRadius: 16,
+          border: `1px solid ${C.border}`,
+          padding: 24,
+          fontFamily: FF,
+        }}
+      >
+        <h2 style={{ fontSize: 28, margin: "0 0 10px", color: C.txt }}>
+          {authMode === "signup" ? "Create your account" : "Log in"}
+        </h2>
+
+        <p style={{ fontSize: 14, color: C.txt2, lineHeight: 1.6, marginBottom: 18 }}>
+          Save your forecast, build your track record, and track your prediction accuracy over time.
+        </p>
+
+        {authMode === "signup" && (
+          <>
+            <input
+              placeholder="First name (optional)"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              style={inputStyle}
+            />
+
+            <input
+              placeholder="Last name (optional)"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              style={inputStyle}
+            />
+
+            <input
+              placeholder="Role (optional)"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={inputStyle}
+            />
+          </>
+        )}
+
+        <input
+          type="email"
+          placeholder="Email (this will be your username)"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={inputStyle}
+        />
+
+        <div style={{ fontSize: 12, color: C.txt2, marginTop: 6, marginBottom: 12 }}>
+          Your email is used as your login and identity on the platform.
+        </div>
+
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={inputStyle}
+        />
+
+        {authMode === "login" && (
+          <div style={{ marginTop: -4, marginBottom: 12, textAlign: "right" }}>
+            <button
+              onClick={onForgotPassword}
+              style={{
+                border: "none",
+                background: "none",
+                color: C.humanTxt,
+                cursor: "pointer",
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
+
+        {authStatus && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: C.borderL,
+              color: C.txt2,
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            {authStatus}
+          </div>
+        )}
+
+        <button
+          onClick={onContinue}
+          style={{ ...primaryBtn, width: "100%", marginBottom: 10 }}
+        >
+          {authMode === "signup" ? "Create account" : "Log in"}
+        </button>
+
+        <button
+          onClick={onClose}
+          style={{ ...secondaryBtn, width: "100%", marginBottom: 12 }}
+        >
+          Cancel
+        </button>
+
+        <div style={{ fontSize: 13, color: C.txt2, textAlign: "center" }}>
+          {authMode === "signup" ? (
+            <>
+              Already have an account?{" "}
+              <button
+                onClick={() => setAuthMode("login")}
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: C.humanTxt,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Log in
+              </button>
+            </>
+          ) : (
+            <>
+              New here?{" "}
+              <button
+                onClick={() => setAuthMode("signup")}
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: C.humanTxt,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Create account
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1371,30 +1624,11 @@ function MethodologyPage() {
 
       <div style={{ display: "grid", gap: 14 }}>
         {[
-          [
-            "Human Consensus",
-            "Average of submitted human probability estimates for a given signal.",
-          ],
-          [
-            "AI Consensus",
-            "Hardcoded or model-generated AI baseline probability used as a comparison layer.",
-          ],
-          [
-            "Combined Signal",
-            "Current MVP uses a simple weighted blend: 60% human consensus, 40% AI consensus.",
-          ],
-          [
-            "Divergence",
-            "The gap between human consensus and AI consensus. Large gaps indicate disagreement in how evidence is being weighted.",
-          ],
-          [
-            "Signal Strength",
-            "A qualitative confidence label based on the current shape of consensus and disagreement.",
-          ],
-          [
-            "Leaderboard",
-            "Current leaderboard is a placeholder design. Reputation scoring is not yet live.",
-          ],
+          ["Human Consensus", "Average of submitted human probability estimates for a given signal."],
+          ["AI Consensus", "AI baseline probability used as a comparison layer."],
+          ["Combined Signal", "When no human data exists, combined = AI baseline. Once human forecasts exist, combined = 60% human consensus + 40% AI consensus."],
+          ["Identity", "Forecasts are linked to authenticated users so forecasting history can be tracked over time."],
+          ["Leaderboard", "Current leaderboard is still placeholder UI. True ranking requires resolved outcomes and scoring."],
         ].map(([title, body]) => (
           <Card key={title} style={{ padding: 20 }}>
             <div style={{ fontFamily: FF, fontSize: 16, fontWeight: 700, color: C.txt, marginBottom: 8 }}>
@@ -1481,12 +1715,43 @@ const td = {
 
 export default function App() {
   const [page, setPage] = useState("index");
-  const [activeSignalId, setActiveSignalId] = useState(SIGNALS[0].id);
+  const [signals, setSignals] = useState([]);
+  const [activeSignalId, setActiveSignalId] = useState(null);
   const [userForecasts, setUserForecasts] = useState({});
   const [forecastRowsBySignal, setForecastRowsBySignal] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [pendingForecast, setPendingForecast] = useState(null);
+
+  const [authMode, setAuthMode] = useState("signup");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authFirstName, setAuthFirstName] = useState("");
+  const [authLastName, setAuthLastName] = useState("");
+  const [authRole, setAuthRole] = useState("");
+  const [authStatus, setAuthStatus] = useState("");
+
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+
+  const fetchSignals = async () => {
+    const { data, error } = await supabase
+      .from("signals")
+      .select("*")
+      .eq("status", "open")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("FETCH SIGNALS ERROR:", error);
+      return;
+    }
+
+    setSignals(data || []);
+  };
 
   const fetchAllForecasts = async () => {
     const { data, error } = await supabase
@@ -1506,79 +1771,171 @@ export default function App() {
       grouped[key].push(row);
     }
     setForecastRowsBySignal(grouped);
+
+    const mine = {};
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.user?.id) {
+      for (const row of data || []) {
+        if (row.user_id === session.user.id) {
+          mine[String(row.signal_id)] = row;
+        }
+      }
+      setUserForecasts(mine);
+    }
   };
 
   useEffect(() => {
+    fetchSignals();
     fetchAllForecasts();
   }, []);
 
+  useEffect(() => {
+    if (signals.length && !activeSignalId) {
+      setActiveSignalId(signals[0].id);
+    }
+  }, [signals, activeSignalId]);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      setCurrentUser(session?.user ?? null);
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const hash = window.location.hash || "";
+    const search = window.location.search || "";
+
+    if (hash.includes("type=recovery") || search.includes("type=recovery")) {
+      setShowResetPassword(true);
+      setShowAuthGate(false);
+      setPage("index");
+      setAuthStatus("");
+    }
+  }, []);
+
   const activeSignalBase =
-    SIGNALS.find((s) => String(s.id) === String(activeSignalId)) || SIGNALS[0];
+    signals.find((s) => String(s.id) === String(activeSignalId)) || null;
 
   const rowsForSignal = forecastRowsBySignal[String(activeSignalId)] || [];
 
   const liveHuman = useMemo(() => {
-    if (!rowsForSignal.length) return activeSignalBase.human;
+    if (!rowsForSignal.length) return 0;
     const total = rowsForSignal.reduce((sum, row) => sum + Number(row.probability || 0), 0);
     return Math.round(total / rowsForSignal.length);
-  }, [rowsForSignal, activeSignalBase.human]);
+  }, [rowsForSignal]);
 
-  const liveContributors = useMemo(() => {
-    return rowsForSignal.length > 0 ? rowsForSignal.length : activeSignalBase.contributorCount;
-  }, [rowsForSignal, activeSignalBase.contributorCount]);
+  const liveContributors = useMemo(() => rowsForSignal.length, [rowsForSignal]);
 
   const liveCombined = useMemo(() => {
-    return Math.round(liveHuman * 0.6 + activeSignalBase.ai * 0.4);
-  }, [liveHuman, activeSignalBase.ai]);
+    if (!activeSignalBase) return 0;
+    if (liveContributors === 0) return activeSignalBase.ai_consensus || 0;
+    return Math.round(liveHuman * 0.6 + (activeSignalBase.ai_consensus || 0) * 0.4);
+  }, [liveHuman, liveContributors, activeSignalBase]);
 
   const hydratedSignals = useMemo(() => {
-    return SIGNALS.map((signal) => {
+    return signals.map((signal) => {
       const rows = forecastRowsBySignal[String(signal.id)] || [];
-      if (!rows.length) return signal;
+      const hasHumanData = rows.length > 0;
 
-      const human = Math.round(
-        rows.reduce((sum, row) => sum + Number(row.probability || 0), 0) / rows.length
-      );
+      const human = hasHumanData
+        ? Math.round(
+            rows.reduce((sum, row) => sum + Number(row.probability || 0), 0) / rows.length
+          )
+        : 0;
+
       const contributorCount = rows.length;
-      const combined = Math.round(human * 0.6 + signal.ai * 0.4);
+      const combined = hasHumanData
+        ? Math.round(human * 0.6 + (signal.ai_consensus || 0) * 0.4)
+        : signal.ai_consensus || 0;
 
       return {
-        ...signal,
+        id: signal.id,
+        question: signal.question,
+        category: signal.category,
+        resolutionDate: signal.resolution_date,
         human,
+        ai: signal.ai_consensus || 0,
         combined,
         contributorCount,
+        hasHumanData,
+        signalStrength: signal.signal_strength || "Moderate",
+        verifiedExperts: signal.verified_experts_count || 0,
+        aiModels: signal.ai_models_count || 0,
+        divergence: hasHumanData ? Math.abs((signal.ai_consensus || 0) - human) : 0,
       };
     });
-  }, [forecastRowsBySignal]);
+  }, [signals, forecastRowsBySignal]);
 
-  const handleSaveForecast = async (data) => {
-    const probabilityNumber = Number(data.probability);
+  const effectiveSignal = useMemo(() => {
+    if (!activeSignalBase) return null;
+    return {
+      id: activeSignalBase.id,
+      question: activeSignalBase.question,
+      category: activeSignalBase.category,
+      resolutionDate: activeSignalBase.resolution_date,
+      human: liveHuman,
+      ai: activeSignalBase.ai_consensus || 0,
+      combined: liveCombined,
+      contributorCount: liveContributors,
+      signalStrength: activeSignalBase.signal_strength || "Moderate",
+      verifiedExperts: activeSignalBase.verified_experts_count || 0,
+      aiModels: activeSignalBase.ai_models_count || 0,
+      divergence: liveContributors > 0 ? Math.abs((activeSignalBase.ai_consensus || 0) - liveHuman) : 0,
+    };
+  }, [activeSignalBase, liveHuman, liveContributors, liveCombined]);
 
-    if (Number.isNaN(probabilityNumber) || probabilityNumber < 0 || probabilityNumber > 100) {
-      setSuccessMessage("");
-      return;
+  const upsertProfile = async (user, firstName, lastName, role) => {
+    const displayName =
+      [firstName, lastName].filter(Boolean).join(" ").trim() || user.email;
+
+    const { error } = await supabase.from("profiles").upsert({
+      id: user.id,
+      email: user.email,
+      first_name: firstName || null,
+      last_name: lastName || null,
+      role: role || null,
+      display_name: displayName,
+    });
+
+    if (error) {
+      console.error("PROFILE UPSERT ERROR:", error);
     }
+  };
 
-    setIsSaving(true);
-    setSuccessMessage("");
+  const saveForecastToDatabase = async (forecastData, user) => {
+    const probabilityNumber = Number(forecastData.probability);
 
     const payload = {
       signal_id: activeSignalId,
-      name: data.name || null,
-      role: data.role || null,
+      user_id: user.id,
       probability: probabilityNumber,
-      confidence: data.confidence,
-      rationale: data.rationale || null,
+      confidence: forecastData.confidence,
+      rationale: forecastData.rationale || null,
     };
 
     const { error } = await supabase.from("forecasts").insert([payload]);
 
-    setIsSaving(false);
-
     if (error) {
       console.error("SUPABASE INSERT ERROR:", error);
       setSuccessMessage(`Error saving forecast: ${error.message}`);
-      return;
+      return false;
     }
 
     setUserForecasts((prev) => ({
@@ -1586,24 +1943,192 @@ export default function App() {
       [activeSignalId]: payload,
     }));
 
-    setIsLoading(true);
     await fetchAllForecasts();
-    setIsLoading(false);
-
-    setSuccessMessage("Forecast submitted successfully. Your contribution has been added to this signal.");
+    setSuccessMessage("Prediction recorded ✅ Your contribution is now part of the live signal.");
     setPage("detail");
+    return true;
+  };
+
+  const handleSaveForecast = async (data) => {
+    const probabilityNumber = Number(data.probability);
+
+    if (Number.isNaN(probabilityNumber) || probabilityNumber < 0 || probabilityNumber > 100) {
+      setSuccessMessage("Please enter a valid probability between 0 and 100.");
+      return;
+    }
+
+    if (!currentUser) {
+      setPendingForecast(data);
+      setShowAuthGate(true);
+      setAuthStatus("");
+      return;
+    }
+
+    setIsSaving(true);
+    await saveForecastToDatabase(data, currentUser);
+    setIsSaving(false);
+  };
+
+  const handleAuthSubmit = async () => {
+    setAuthStatus("");
+
+    if (!authEmail || !authPassword) {
+      setAuthStatus("Please enter email and password.");
+      return;
+    }
+
+    if (authMode === "signup") {
+      const { data, error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
+      });
+
+      if (error) {
+        setAuthStatus(error.message);
+        return;
+      }
+
+      if (data.user) {
+        await upsertProfile(data.user, authFirstName, authLastName, authRole);
+        setCurrentUser(data.user);
+
+        if (pendingForecast) {
+          setIsSaving(true);
+          const ok = await saveForecastToDatabase(pendingForecast, data.user);
+          setIsSaving(false);
+
+          if (ok) {
+            setPendingForecast(null);
+            setShowAuthGate(false);
+            setAuthStatus("");
+            setSuccessMessage("Account created and prediction saved.");
+            setAuthMode("signup");
+            setAuthEmail("");
+            setAuthPassword("");
+            setAuthFirstName("");
+            setAuthLastName("");
+            setAuthRole("");
+          }
+        } else {
+          setShowAuthGate(false);
+          setSuccessMessage("Account created successfully.");
+          setAuthMode("signup");
+          setAuthEmail("");
+          setAuthPassword("");
+          setAuthFirstName("");
+          setAuthLastName("");
+          setAuthRole("");
+        }
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+
+      if (error) {
+        setAuthStatus(error.message);
+        return;
+      }
+
+      if (data.user) {
+        setCurrentUser(data.user);
+
+        if (pendingForecast) {
+          setIsSaving(true);
+          const ok = await saveForecastToDatabase(pendingForecast, data.user);
+          setIsSaving(false);
+
+          if (ok) {
+            setPendingForecast(null);
+            setShowAuthGate(false);
+            setAuthStatus("");
+            setSuccessMessage("Logged in and prediction saved.");
+            setAuthEmail("");
+            setAuthPassword("");
+          }
+        } else {
+          setShowAuthGate(false);
+          setSuccessMessage("Logged in successfully.");
+          setAuthEmail("");
+          setAuthPassword("");
+        }
+      }
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setAuthStatus("");
+
+    if (!authEmail) {
+      setAuthStatus("Enter your email first.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      setAuthStatus(error.message);
+    } else {
+      setAuthStatus("Password reset email sent.");
+    }
+  };
+
+  const handleSetNewPassword = async () => {
+    setAuthStatus("");
+
+    if (!newPassword) {
+      setAuthStatus("Enter a new password.");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      setAuthStatus(error.message);
+      return;
+    }
+
+    setShowResetPassword(false);
+    setNewPassword("");
+    setSuccessMessage("Password updated successfully.");
+    setAuthMode("login");
+    setShowAuthGate(true);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setSuccessMessage("Signed out.");
+    setUserForecasts({});
   };
 
   const userForecast = userForecasts[activeSignalId] || null;
 
   const onNav = (targetPage) => {
     setSuccessMessage("");
+
+    if (targetPage === "login") {
+      setAuthMode("login");
+      setShowAuthGate(true);
+      return;
+    }
+
     setPage(targetPage);
   };
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
-      <TopNav page={page} onNav={onNav} />
+      <TopNav
+        page={page}
+        onNav={onNav}
+        currentUser={currentUser}
+        onSignOut={handleSignOut}
+      />
 
       {page === "index" && (
         <SignalsIndexPage
@@ -1617,9 +2142,9 @@ export default function App() {
         />
       )}
 
-      {page === "detail" && (
+      {page === "detail" && effectiveSignal && (
         <SignalDetailPage
-          signal={activeSignalBase}
+          signal={effectiveSignal}
           onBack={() => {
             setSuccessMessage("");
             setPage("index");
@@ -1634,9 +2159,9 @@ export default function App() {
         />
       )}
 
-      {page === "submit" && (
+      {page === "submit" && effectiveSignal && (
         <SubmitPage
-          signal={activeSignalBase}
+          signal={effectiveSignal}
           onBack={() => {
             setSuccessMessage("");
             setPage("detail");
@@ -1649,6 +2174,103 @@ export default function App() {
       {page === "leaderboard" && <LeaderboardPage />}
       {page === "models" && <AIModelsPage />}
       {page === "methodology" && <MethodologyPage />}
+
+      {showAuthGate && (
+        <AuthGate
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          email={authEmail}
+          setEmail={setAuthEmail}
+          password={authPassword}
+          setPassword={setAuthPassword}
+          firstName={authFirstName}
+          setFirstName={setAuthFirstName}
+          lastName={authLastName}
+          setLastName={setAuthLastName}
+          role={authRole}
+          setRole={setAuthRole}
+          onClose={() => setShowAuthGate(false)}
+          onContinue={handleAuthSubmit}
+          onForgotPassword={handleForgotPassword}
+          authStatus={authStatus}
+        />
+      )}
+
+      {showResetPassword && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: C.overlay,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 110,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              padding: 24,
+              fontFamily: FF,
+            }}
+          >
+            <h2 style={{ fontSize: 28, margin: "0 0 10px", color: C.txt }}>
+              Set new password
+            </h2>
+
+            <p style={{ fontSize: 14, color: C.txt2, lineHeight: 1.6, marginBottom: 18 }}>
+              Enter your new password below.
+            </p>
+
+            <input
+              type="password"
+              placeholder="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              style={inputStyle}
+            />
+
+            {authStatus && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: C.borderL,
+                  color: C.txt2,
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                }}
+              >
+                {authStatus}
+              </div>
+            )}
+
+            <button
+              onClick={handleSetNewPassword}
+              style={{ ...primaryBtn, width: "100%", marginBottom: 10 }}
+            >
+              Update password
+            </button>
+
+            <button
+              onClick={() => {
+                setShowResetPassword(false);
+                setNewPassword("");
+              }}
+              style={{ ...secondaryBtn, width: "100%" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
