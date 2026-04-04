@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
+import { mapCategory } from "./lib/categoryMapping";
+import { getSignalHook } from "./lib/signalHooks";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -211,8 +213,32 @@ function MetaPill({ label, value, highlight = false }) {
   );
 }
 
-function TopNav({ page, onNav, currentUser, onSignOut }) {
+function TopNav({ page, onNav, currentUser, onSignOut, userStats, rewardJustLanded }) {
   const { isMobile } = useBreakpoint();
+
+  // Animate points 0 → real value when reward lands
+  const [displayedPoints, setDisplayedPoints] = useState(userStats?.points ?? 0);
+  useEffect(() => {
+    if (!rewardJustLanded || userStats == null) return;
+    const target = userStats.points;
+    const duration = 800;
+    const steps = 30;
+    const interval = duration / steps;
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      setDisplayedPoints(Math.round((step / steps) * target));
+      if (step >= steps) clearInterval(timer);
+    }, interval);
+    return () => clearInterval(timer);
+  }, [rewardJustLanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep displayedPoints in sync when not animating
+  useEffect(() => {
+    if (!rewardJustLanded && userStats != null) {
+      setDisplayedPoints(userStats.points);
+    }
+  }, [userStats?.points, rewardJustLanded]); // eslint-disable-line react-hooks/exhaustive-deps
   const items = [
     ["index", "Signals"],
     ["leaderboard", "Leaderboard"],
@@ -309,6 +335,22 @@ function TopNav({ page, onNav, currentUser, onSignOut }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto" }}>
           {currentUser ? (
             <>
+              {!isMobile && userStats && (
+                <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13, fontFamily: FF }}>
+                  <span style={{
+                    color: rewardJustLanded ? C.aiTxt : C.txt2,
+                    transition: "color 0.4s, box-shadow 0.4s",
+                    padding: rewardJustLanded ? "3px 8px" : "3px 0",
+                    borderRadius: 6,
+                    boxShadow: rewardJustLanded ? `0 0 0 1px ${C.ai}40, 0 0 8px ${C.ai}30` : "none",
+                    background: rewardJustLanded ? `${C.ai}10` : "transparent",
+                  }}>
+                    ⚡ {displayedPoints.toLocaleString()} pts
+                  </span>
+                  {userStats.streak > 0 && <span style={{ color: C.txt2 }}>🔥 {userStats.streak} streak</span>}
+                  {userStats.accuracy != null && <span style={{ color: C.txt2 }}>🎯 {userStats.accuracy}%</span>}
+                </div>
+              )}
               {!isMobile && (
                 <div
                   style={{
@@ -381,7 +423,7 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
   const categories = ["All", "AI & ML", "Policy", "Safety", "Economics", "Science"];
 
   const filtered =
-    category === "All" ? signals : signals.filter((signal) => signal.category === category);
+    category === "All" ? signals : signals.filter((signal) => mapCategory(signal.category) === category);
 
   return (
     <div
@@ -395,7 +437,7 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
         Forecast Signals
       </h1>
       <p style={{ fontFamily: FF, color: C.txt2, fontSize: 15, marginBottom: 28 }}>
-        {signals.length} active signals · Aggregating human expert and AI model forecasts
+        Forecast the questions that move markets. See where experts and AI disagree before consensus forms.
       </p>
 
       <div
@@ -441,146 +483,78 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
           const hasContributed = !!userForecasts[signal.id];
           const myForecast = userForecasts[signal.id];
 
+          const strength = (signal.signalStrength || "").toLowerCase();
+          const strBg = strength === "high" ? "#ECFDF5" : strength === "moderate" ? "#EEF2FF" : strength === "low" ? "#FFFBEB" : "#F3F4F6";
+          const strColor = strength === "high" ? "#166534" : strength === "moderate" ? "#4338CA" : strength === "low" ? "#B45309" : C.txt3;
+          const aiDelta = signal.hasHumanData ? signal.ai - signal.human : null;
+
           return (
-            <Card key={signal.id} style={{ padding: isMobile ? 18 : 26 }}>
+            <Card key={signal.id} style={{ padding: isMobile ? 14 : 20 }}>
               <button
                 onClick={() => onOpen(signal)}
-                style={{
-                  width: "100%",
-                  border: "none",
-                  background: "none",
-                  textAlign: "left",
-                  padding: 0,
-                  cursor: "pointer",
-                }}
+                style={{ width: "100%", border: "none", background: "none", textAlign: "left", padding: 0, cursor: "pointer" }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 20,
-                    flexDirection: isMobile ? "column" : "row",
-                  }}
-                >
+                {/* Badge row */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                  {signal.category && <Badge bg={C.humanBg} color={C.humanTxt}>{mapCategory(signal.category)}</Badge>}
+                  {signal.signalStrength && (
+                    <Badge bg={strBg} color={strColor}>
+                      {signal.signalStrength.charAt(0).toUpperCase() + signal.signalStrength.slice(1)} signal
+                    </Badge>
+                  )}
+                  {signal.divergence >= 15 && <Badge bg="#FFFBEB" color="#B45309">High divergence</Badge>}
+                  {hasContributed && <Badge bg={C.successBg} color={C.successTxt}>Contributed</Badge>}
+                </div>
+
+                {/* Main row: question + combined % */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                      <Badge bg={C.humanBg} color={C.humanTxt}>
-                        {signal.category}
-                      </Badge>
-                      <Badge
-                        bg={
-                          signal.signalStrength === "Strong"
-                            ? "#ECFDF5"
-                            : signal.signalStrength === "Moderate"
-                            ? "#EEF2FF"
-                            : "#FFFBEB"
-                        }
-                        color={
-                          signal.signalStrength === "Strong"
-                            ? "#166534"
-                            : signal.signalStrength === "Moderate"
-                            ? "#4338CA"
-                            : "#B45309"
-                        }
-                      >
-                        {signal.signalStrength} Signal
-                      </Badge>
-                      {signal.divergence >= 15 && (
-                        <Badge bg="#FFFBEB" color="#B45309">
-                          High Divergence
-                        </Badge>
-                      )}
-                      {hasContributed && (
-                        <Badge bg={C.successBg} color={C.successTxt}>
-                          Contributed
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div
-                      style={{
-                        fontFamily: FF,
-                        fontSize: isMobile ? 18 : 20,
-                        fontWeight: 600,
-                        color: C.txt,
-                        lineHeight: 1.45,
-                        marginBottom: 18,
-                      }}
-                    >
-                      {signal.question}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 20,
-                        flexWrap: "wrap",
-                        fontFamily: FF,
-                        fontSize: 15,
-                        color: C.txt2,
-                        marginBottom: hasContributed ? 12 : 22,
-                      }}
-                    >
-                      <div>
-                        <span style={{ color: C.human }}>●</span> Human{" "}
-                        <strong style={{ color: C.humanTxt }}>
-                          {signal.hasHumanData ? `${signal.human}%` : "No data"}
-                        </strong>
-                      </div>
-                      <div>
-                        <span style={{ color: C.ai }}>●</span> AI{" "}
-                        <strong style={{ color: C.aiTxt }}>{signal.ai}%</strong>
-                      </div>
-                      <div>
-                        {signal.hasHumanData ? `AI +${Math.abs(signal.ai - signal.human)}pp` : "AI baseline only"}
-                      </div>
-                    </div>
-
-                    {hasContributed && (
-                      <div
-                        style={{
-                          fontFamily: FF,
-                          fontSize: 13,
-                          color: C.successTxt,
-                          marginBottom: 14,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Your prediction: {myForecast.probability}% · {myForecast.confidence}
+                    {getSignalHook(signal.id) && (
+                      <div style={{ fontFamily: FF, fontSize: isMobile ? 17 : 19, fontWeight: 700, color: C.txt, lineHeight: 1.3, marginBottom: 4 }}>
+                        {getSignalHook(signal.id)}
                       </div>
                     )}
-
-                    <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3 }}>
-                      {signal.contributorCount === 0
-                        ? "Be the first to forecast"
-                        : `${signal.contributorCount} contributors`} · Resolves {signal.resolutionDate}
+                    <div style={{ fontFamily: FF, fontSize: isMobile ? 14 : 15, fontWeight: getSignalHook(signal.id) ? 400 : 600, color: getSignalHook(signal.id) ? C.txt2 : C.txt, lineHeight: 1.45 }}>
+                      {signal.question}
                     </div>
                   </div>
-
-                  <div
-                    style={{
-                      minWidth: isMobile ? "auto" : 150,
-                      textAlign: isMobile ? "left" : "right",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: FF,
-                        fontSize: isMobile ? 28 : 34,
-                        fontWeight: 800,
-                        color: C.txt,
-                        lineHeight: 1,
-                      }}
-                    >
+                  <div style={{ flexShrink: 0, textAlign: "right" }}>
+                    <div style={{ fontFamily: FF, fontSize: isMobile ? 24 : 28, fontWeight: 800, color: C.txt, lineHeight: 1 }}>
                       {signal.combined}%
                     </div>
-                    <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3, marginTop: 2 }}>
-                      combined
-                    </div>
-                    <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3, marginTop: isMobile ? 12 : 28 }}>
-                      {signal.contributorCount} contributors
-                    </div>
                   </div>
+                </div>
+
+                {/* Stats row */}
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontFamily: FF, fontSize: 13, color: C.txt2, marginBottom: 10, alignItems: "center" }}>
+                  <span>
+                    <span style={{ color: C.human }}>●</span>{" "}
+                    Human <strong style={{ color: C.humanTxt }}>{signal.hasHumanData ? `${signal.human}%` : "—"}</strong>
+                  </span>
+                  <span>
+                    <span style={{ color: C.ai }}>●</span>{" "}
+                    AI <strong style={{ color: C.aiTxt }}>{signal.ai}%</strong>
+                  </span>
+                  {aiDelta != null && (
+                    <span style={{ color: C.txt3 }}>
+                      {aiDelta === 0 ? "Aligned" : aiDelta > 0 ? `AI +${aiDelta} pts` : `AI −${Math.abs(aiDelta)} pts`}
+                    </span>
+                  )}
+                  {!signal.hasHumanData && <span style={{ color: C.txt3 }}>AI baseline only</span>}
+                </div>
+
+                {/* Footer row */}
+                <div style={{ fontFamily: FF, fontSize: 13, color: C.txt3, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {hasContributed && (
+                    <span style={{ color: C.successTxt, fontWeight: 600 }}>
+                      Your position: {myForecast.probability >= 50 ? "YES" : "NO"} · {myForecast.probability}%
+                    </span>
+                  )}
+                  {hasContributed && <span>·</span>}
+                  <span>
+                    {signal.contributorCount === 0 ? "Be the first" : `${signal.contributorCount} contributors`}
+                    {signal.resolutionDate ? ` · Resolves ${signal.resolutionDate}` : ""}
+                  </span>
                 </div>
               </button>
             </Card>
@@ -623,16 +597,50 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function EvidenceAnalysis({ isMobile }) {
+function EvidenceAnalysis({ isMobile, aiSummary }) {
+  const overall = aiSummary?.overall ?? {};
+  const profileSummary = aiSummary?.profile_summary ?? {};
+  const sysExp = aiSummary?.system_explanation ?? {};
+
+  const disagreementScore = overall.disagreement_score ?? null;
+  const disagreementLabel =
+    disagreementScore == null ? null :
+    disagreementScore <= 15 ? "Low" :
+    disagreementScore <= 30 ? "Moderate" : "High";
+  const disagreementColor =
+    disagreementLabel === "Low" ? "#10B981" :
+    disagreementLabel === "Moderate" ? "#F59E0B" : "#EF4444";
+
+  const investorP = profileSummary.investor?.avg_probability ?? null;
+  const baseP = profileSummary.base?.avg_probability ?? null;
+  const researcherP = profileSummary.researcher?.avg_probability ?? null;
+
+  const aiBaseline = overall.ai_baseline_probability ?? null;
+  const weightedBaseline = overall.weighted_ai_baseline_probability ?? null;
+  const confWeighted = overall.confidence_weighted_baseline ?? null;
+  const showSignalConstruction = aiBaseline != null || weightedBaseline != null || confWeighted != null;
+
+  const primaryDriver = sysExp.baseline ?? "Benchmark convergence and open-weight momentum";
+  const mainConstraint = "Enterprise reliability, safety infrastructure, and deployment quality";
+  const netEffect = sysExp.key_tension ?? "Moderate probability with meaningful disagreement across perspectives";
+
+  const researcherText = sysExp.key_tension ?? AI_SYNTHESIS.bullCase;
+  const investorText = sysExp.disagreement_interpretation ?? AI_SYNTHESIS.bearCase;
+  const whyDifferText =
+    sysExp.disagreement_interpretation
+      ? sysExp.disagreement_interpretation
+      : "The researcher lens weights benchmark progress and scaling trends. The investor lens weights adoption friction and execution risk. The final signal reconciles both.";
+
   return (
     <div style={{ fontFamily: FF }}>
+      {/* What’s Driving the Signal — structured */}
       <div
         style={{
           padding: "16px 18px",
           border: `1px solid ${C.border}`,
           borderRadius: 10,
           backgroundColor: C.ink,
-          marginBottom: 22,
+          marginBottom: 16,
         }}
       >
         <div
@@ -642,63 +650,190 @@ function EvidenceAnalysis({ isMobile }) {
             color: "rgba(255,255,255,0.55)",
             textTransform: "uppercase",
             letterSpacing: "0.07em",
-            marginBottom: 8,
+            marginBottom: 12,
           }}
         >
           What’s Driving the Signal
         </div>
-        <p style={{ fontSize: 14, color: "#F9FAFB", lineHeight: 1.6, margin: 0 }}>
-          The current signal is driven by accelerating benchmark convergence and growing
-          open-weight infrastructure investment, partially offset by concerns around
-          deployment quality, safety infrastructure, and enterprise reliability.
-        </p>
+        {[
+          ["Primary driver", primaryDriver],
+          ["Main constraint", mainConstraint],
+          ["Net effect", netEffect],
+        ].map(([label, text]) => (
+          <div key={label} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "rgba(255,255,255,0.38)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                whiteSpace: "nowrap",
+                minWidth: 118,
+                paddingTop: 2,
+              }}
+            >
+              {label}
+            </span>
+            <span style={{ fontSize: 13, color: "#F9FAFB", lineHeight: 1.55 }}>{text}</span>
+          </div>
+        ))}
       </div>
 
-      <div style={{ marginBottom: 24 }}>
+      {/* AI Disagreement block */}
+      {(disagreementLabel != null || investorP != null || baseP != null || researcherP != null) && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 14,
+            padding: "14px 18px",
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            backgroundColor: C.surface,
+            marginBottom: 16,
           }}
         >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.txt3,
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              marginBottom: 10,
+            }}
+          >
+            AI Disagreement
+          </div>
+          {disagreementLabel && (
+            <div style={{ fontSize: 13, fontWeight: 600, color: disagreementColor, marginBottom: 12 }}>
+              {disagreementLabel} disagreement{disagreementScore != null ? ` • ${disagreementScore} pt spread` : ""}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 24 }}>
+            {[
+              ["Investor", investorP],
+              ["Base", baseP],
+              ["Researcher", researcherP],
+            ].map(([label, val]) =>
+              val != null ? (
+                <div key={label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: C.txt3,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    {label}
+                  </span>
+                  <span style={{ fontSize: 17, fontWeight: 700, color: C.txt }}>{val}%</span>
+                </div>
+              ) : null
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* AI Synthesis — Researcher / Investor views */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.ai }} />
           <span style={{ fontSize: 14, fontWeight: 700, color: C.txt }}>AI Synthesis</span>
         </div>
 
         <Card style={{ overflow: "hidden" }}>
           {[
-            ["Bull Case", AI_SYNTHESIS.bullCase, "#10B981", "#ECFDF5"],
-            ["Bear Case", AI_SYNTHESIS.bearCase, "#EF4444", "#FEF2F2"],
-            ["Key Uncertainty", AI_SYNTHESIS.keyUncertainty, "#F59E0B", "#FFFBEB"],
-            ["Why Humans & AI Disagree", AI_SYNTHESIS.disagreement, C.combined, C.borderL],
-          ].map(([label, text, color, bg], i) => (
+            ["RESEARCHER VIEW", "Technical Lens", researcherText, "#0F766E", "#F0FDFA"],
+            ["INVESTOR VIEW", "Deployment Lens", investorText, "#C2410C", "#FFF7ED"],
+            ["KEY UNCERTAINTY", null, AI_SYNTHESIS.keyUncertainty, "#F59E0B", "#FFFBEB"],
+          ].map(([label, sublabel, text, color, bg], i) => (
             <div
               key={label}
               style={{
                 padding: "16px 18px",
-                borderBottom: i < 3 ? `1px solid ${C.border}` : "none",
+                borderBottom: `1px solid ${C.border}`,
                 backgroundColor: bg,
               }}
             >
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  marginBottom: 6,
-                }}
-              >
-                {label}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {label}
+                </div>
+                {sublabel && (
+                  <div style={{ fontSize: 11, color: `${color}99` }}>{sublabel}</div>
+                )}
               </div>
               <p style={{ fontSize: 13, color: C.txt, lineHeight: 1.6, margin: 0 }}>{text}</p>
             </div>
           ))}
+          <div style={{ padding: "16px 18px", backgroundColor: C.borderL }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: C.combined,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                marginBottom: 6,
+              }}
+            >
+              Why These Views Differ
+            </div>
+            <p style={{ fontSize: 13, color: C.txt, lineHeight: 1.6, margin: 0 }}>{whyDifferText}</p>
+          </div>
         </Card>
       </div>
+
+      {/* Signal construction block */}
+      {showSignalConstruction && (
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.txt3,
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              marginBottom: 10,
+            }}
+          >
+            How This Signal Is Formed
+          </div>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+            {[
+              ["AI baseline (unweighted)", aiBaseline],
+              ["Weighted baseline", weightedBaseline],
+              ["Confidence-weighted baseline", confWeighted],
+            ].map(([label, val], i, arr) =>
+              val != null ? (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 16px",
+                    borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : "none",
+                    backgroundColor: C.surface,
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: C.txt2 }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.txt }}>{val}%</span>
+                </div>
+              ) : null
+            )}
+          </div>
+        </div>
+      )}
 
       <div>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.txt, marginBottom: 12 }}>
@@ -768,16 +903,321 @@ function EvidenceAnalysis({ isMobile }) {
   );
 }
 
+
+function InlinePredictionBlock({
+  signal,
+  userForecast,
+  liveHuman,
+  liveContributors,
+  liveCombined,
+  isSaving,
+  onSave,
+  isAuthenticated,
+}) {
+  const { isMobile } = useBreakpoint();
+  const isComposingRef = useRef(false);
+
+  const deriveDirection = (forecast) => {
+    if (!forecast) return null;
+    return forecast.probability >= 50 ? "YES" : "NO";
+  };
+
+  const [panelState, setPanelState] = useState(() =>
+    userForecast ? "submitted_success" : "idle"
+  );
+  const [direction, setDirection] = useState(() => deriveDirection(userForecast));
+  const [probability, setProbability] = useState(userForecast?.probability ?? null);
+  const [stake, setStake] = useState(userForecast?.stake ?? 50);
+  const [rationale, setRationale] = useState(userForecast?.rationale ?? "");
+
+  // Full reset when navigating to a different signal
+  useEffect(() => {
+    isComposingRef.current = false;
+    const dir = deriveDirection(userForecast);
+    setDirection(dir);
+    setProbability(userForecast?.probability ?? null);
+    setStake(userForecast?.stake ?? 50);
+    setRationale(userForecast?.rationale ?? "");
+    setPanelState(userForecast ? "submitted_success" : "idle");
+  }, [signal.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Transition to position view when forecast arrives (auth → submit path).
+  // No isComposingRef guard here — if a forecast lands from the DB, it always wins.
+  // Edit is disabled so there is no risk of overwriting an in-progress form.
+  useEffect(() => {
+    if (userForecast) {
+      isComposingRef.current = false;
+      setDirection(deriveDirection(userForecast));
+      setProbability(userForecast.probability ?? null);
+      setStake(userForecast.stake ?? 50);
+      setRationale(userForecast.rationale ?? "");
+      setPanelState("submitted_success");
+    }
+  }, [userForecast]);
+
+  const handleDirectionSelect = (dir) => {
+    isComposingRef.current = true;
+    setPanelState("composing");
+    setDirection(dir);
+    if (probability === null) setProbability(dir === "YES" ? 60 : 40);
+  };
+
+  const handleSubmit = async () => {
+    const ok = await onSave({ probability: currentProb, confidence: null, rationale, stake });
+    if (ok) {
+      isComposingRef.current = false;
+      setPanelState("submitted_success");
+    }
+  };
+
+  const YES_COLOR = "#0F766E";
+  const YES_LIGHT = "#CCFBF1";
+  const NO_COLOR = "#C2410C";
+  const NO_LIGHT = "#FEE2E2";
+  const activeColor = direction === "YES" ? YES_COLOR : direction === "NO" ? NO_COLOR : C.combined;
+  const currentProb = probability ?? 50;
+
+  // ── Position view ──────────────────────────────────────────────────────────
+  if (panelState === "submitted_success" && userForecast) {
+    const posDir = deriveDirection(userForecast);
+    const posColor = posDir === "YES" ? YES_COLOR : NO_COLOR;
+    const posLight = posDir === "YES" ? YES_LIGHT : NO_LIGHT;
+    const posProb = Math.min(100, Math.max(1, Number(userForecast.probability ?? currentProb) || 1));
+    const safeStake = Math.max(0, Number(stake) || 0);
+    const rawReward = safeStake * (100 / posProb);
+    const posReward = Number.isFinite(rawReward) ? Math.round(rawReward) : null;
+    const conviction = safeStake <= 20 ? "Low" : safeStake <= 70 ? "Medium" : "High";
+    const posDelta = (liveCombined != null && Number.isFinite(liveCombined))
+      ? Math.round(posProb - liveCombined)
+      : null;
+
+    return (
+      <Card style={{ padding: isMobile ? 16 : 20, marginBottom: 14, fontFamily: FF }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{
+            width: 22, height: 22, borderRadius: "50%", background: posColor,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontSize: 12, fontWeight: 800, flexShrink: 0,
+          }}>✓</div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: posColor, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {posDir} Position Locked In
+          </span>
+        </div>
+
+        {/* Your Position */}
+        <div style={{ padding: "12px 14px", borderRadius: 10, marginBottom: 10, background: posLight, border: `1px solid ${posColor}33` }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
+            Your Position
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: rationale ? 8 : 0 }}>
+            <span style={{ padding: "3px 10px", borderRadius: 999, background: posColor, color: "#fff", fontSize: 12, fontWeight: 800 }}>
+              {posDir}
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: posColor }}>{posProb}%</span>
+            <span style={{ fontSize: 12, color: C.txt3 }}>· {stake} pts staked</span>
+          </div>
+          {rationale ? (
+            <p style={{ fontSize: 12, color: C.txt2, lineHeight: 1.5, margin: 0, fontStyle: "italic" }}>
+              "{rationale}"
+            </p>
+          ) : null}
+        </div>
+
+        {/* Reward */}
+        <div style={{ padding: "12px 14px", borderRadius: 10, marginBottom: 10, background: C.surface, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
+            Reward
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.txt, marginBottom: 8 }}>
+            +{stake} Signal Points committed
+          </div>
+          <div style={{ display: "flex", gap: 20 }}>
+            <div>
+              <div style={{ fontSize: 10, color: C.txt3, marginBottom: 2 }}>Potential reward</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: YES_COLOR }}>{posReward != null ? `+${posReward} pts` : "—"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: C.txt3, marginBottom: 2 }}>Conviction</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.txt }}>{conviction}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Market context */}
+        <div style={{ padding: "12px 14px", borderRadius: 10, marginBottom: 10, background: C.surface, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
+            Market Context
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, color: C.txt2 }}>You entered at</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.txt }}>{posProb}%</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, color: C.txt2 }}>Current signal</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.txt }}>{liveCombined}%</span>
+            </div>
+            {posDelta != null && (
+              <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.border}`, paddingTop: 6, marginTop: 2 }}>
+                <span style={{ fontSize: 13, color: C.txt2 }}>Δ vs signal</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: posDelta >= 0 ? YES_COLOR : NO_COLOR }}>
+                  {posDelta != null && Number.isFinite(posDelta) ? `${posDelta >= 0 ? "+" : ""}${posDelta} pts` : "—"}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Resolution criteria */}
+        {signal.resolution_criteria ? (
+          <div style={{ padding: "10px 14px", borderRadius: 10, marginBottom: 10, background: C.borderL, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+              Resolves YES if
+            </div>
+            <p style={{ fontSize: 12, color: C.txt2, lineHeight: 1.5, margin: 0 }}>
+              {signal.resolution_criteria}
+            </p>
+          </div>
+        ) : null}
+
+
+      </Card>
+    );
+  }
+
+  // ── Composing / idle view ──────────────────────────────────────────────────
+  return (
+    <Card style={{ padding: isMobile ? 16 : 20, marginBottom: 14 }}>
+      <div style={{ fontFamily: FF, fontSize: 11, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
+        {userForecast ? "Your Prediction" : "Make Your Prediction"}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: direction ? 20 : 0 }}>
+        <button
+          onClick={() => handleDirectionSelect("YES")}
+          style={{
+            flex: 1, height: 60, borderRadius: 14, border: "none",
+            background: direction === "NO" ? YES_LIGHT : YES_COLOR,
+            color: direction === "NO" ? YES_COLOR : "#fff",
+            cursor: "pointer", fontWeight: 800, fontFamily: FF, fontSize: 18,
+            transition: "background 0.15s, color 0.15s",
+          }}
+        >Bet YES ↑</button>
+        <button
+          onClick={() => handleDirectionSelect("NO")}
+          style={{
+            flex: 1, height: 60, borderRadius: 14, border: "none",
+            background: direction === "YES" ? NO_LIGHT : NO_COLOR,
+            color: direction === "YES" ? NO_COLOR : "#fff",
+            cursor: "pointer", fontWeight: 800, fontFamily: FF, fontSize: 18,
+            transition: "background 0.15s, color 0.15s",
+          }}
+        >Bet NO ↓</button>
+      </div>
+
+      {!isAuthenticated && (
+        <div style={{
+          fontFamily: FF,
+          fontSize: 12,
+          color: C.aiTxt,
+          fontWeight: 500,
+          textAlign: "center",
+          marginTop: 10,
+          marginBottom: direction ? 10 : 0,
+          opacity: 0.75,
+          letterSpacing: "0.01em",
+        }}>
+          +1,000 Signal Points when you create your account
+        </div>
+      )}
+
+      {direction && (
+        <>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.txt2, marginBottom: 8, fontFamily: FF }}>
+              How likely is this?
+            </div>
+            <input
+              type="range" min={0} max={100} value={currentProb}
+              onChange={(e) => setProbability(Number(e.target.value))}
+              style={{ width: "100%", accentColor: activeColor, marginBottom: 8 }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 26, fontWeight: 800, color: activeColor, fontFamily: FF, letterSpacing: "-0.03em" }}>
+                {currentProb}%
+              </span>
+              <span style={{ fontSize: 12, color: C.txt3, fontFamily: FF }}>
+                Current signal: {liveCombined}%
+              </span>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.txt2, fontFamily: FF }}>Stake (Signal Points)</div>
+              <div style={{ fontSize: 11, color: C.txt3, fontFamily: FF, marginTop: 2 }}>Higher stake = stronger conviction</div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {[10, 50, 100].map((value) => (
+                <button
+                  key={value}
+                  onClick={() => setStake(value)}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 10,
+                    border: `1.5px solid ${stake === value ? activeColor : C.border}`,
+                    background: stake === value ? activeColor + "18" : "#fff",
+                    color: stake === value ? activeColor : C.txt2,
+                    cursor: "pointer", fontWeight: 700, fontFamily: FF, fontSize: 14,
+                    transition: "border-color 0.1s, background 0.1s, color 0.1s",
+                  }}
+                >{value}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <textarea
+              rows={3}
+              placeholder="What's driving your view? (optional)"
+              value={rationale}
+              onChange={(e) => setRationale(e.target.value)}
+              style={{ ...inputStyle, resize: "vertical", marginBottom: 0 }}
+            />
+          </div>
+
+          <button
+            disabled={isSaving}
+            onClick={handleSubmit}
+            style={{
+              width: "100%", padding: "15px 0", borderRadius: 14, border: "none",
+              background: activeColor, color: "#fff",
+              cursor: isSaving ? "not-allowed" : "pointer",
+              fontWeight: 800, fontFamily: FF, fontSize: 16,
+              opacity: isSaving ? 0.7 : 1,
+            }}
+          >
+            {isSaving ? "Saving..." : `Submit ${direction} Prediction`}
+          </button>
+        </>
+      )}
+    </Card>
+  );
+}
+
+
 function SignalDetailPage({
   signal,
   onBack,
-  onSubmit,
+  onSave,
   userForecast,
   liveHuman,
   liveContributors,
   liveCombined,
   isLoading,
+  isSaving,
   successMessage,
+  isAuthenticated,
 }) {
   const { isMobile, isTablet } = useBreakpoint();
   const stackRightRail = isMobile || isTablet;
@@ -798,7 +1238,7 @@ function SignalDetailPage({
       <div style={{ marginTop: 22, marginBottom: 20 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
           <Badge bg={C.humanBg} color={C.humanTxt}>
-            {signal.category}
+            {mapCategory(signal.category)}
           </Badge>
           <Badge bg="#F0FDF4" color="#166534">
             Active
@@ -859,7 +1299,7 @@ function SignalDetailPage({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: stackRightRail ? "1fr" : "1fr 340px",
+          gridTemplateColumns: stackRightRail ? "1fr" : "minmax(0, 1fr) 312px",
           gap: 28,
           alignItems: "start",
         }}
@@ -958,8 +1398,8 @@ function SignalDetailPage({
                 Your Prediction
               </div>
               <div style={{ fontSize: 13, color: C.txt }}>
-                Probability: <strong>{userForecast.probability}%</strong> · Confidence:{" "}
-                <strong>{userForecast.confidence}</strong>
+                Probability: <strong>{userForecast.probability}%</strong>{userForecast.confidence != null ? <> · Confidence: <strong>{userForecast.confidence}</strong></> : null}{" "}
+                {userForecast.stake ? <>· Stake: <strong>{userForecast.stake}</strong></> : null}
               </div>
               {userForecast.rationale ? (
                 <div style={{ fontSize: 13, color: C.txt2, marginTop: 4 }}>{userForecast.rationale}</div>
@@ -968,21 +1408,21 @@ function SignalDetailPage({
           )}
 
           <Card style={{ padding: isMobile ? "18px 16px" : "22px 24px" }}>
-            <EvidenceAnalysis isMobile={isMobile} />
+            <EvidenceAnalysis isMobile={isMobile} aiSummary={null} />
           </Card>
         </div>
 
         <div style={{ position: stackRightRail ? "static" : "sticky", top: 90 }}>
-          <Card style={{ padding: 20, marginBottom: 14 }}>
+          <Card style={{ padding: isMobile ? 16 : 20, marginBottom: 14 }}>
             <div
               style={{
                 fontFamily: FF,
                 fontSize: 11,
-                fontWeight: 600,
+                fontWeight: 700,
                 color: C.txt3,
                 textTransform: "uppercase",
                 letterSpacing: "0.07em",
-                marginBottom: 12,
+                marginBottom: 14,
               }}
             >
               Current Signal
@@ -990,480 +1430,80 @@ function SignalDetailPage({
 
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-end",
-                marginBottom: 8,
+                fontSize: 42,
+                fontWeight: 800,
+                color: C.txt,
+                lineHeight: 1,
+                letterSpacing: "-0.04em",
+                marginBottom: 4,
               }}
             >
-              <div
-                style={{
-                  fontSize: isMobile ? 42 : 54,
-                  fontWeight: 800,
-                  color: C.txt,
-                  lineHeight: 1,
-                  letterSpacing: "-0.04em",
-                }}
-              >
-                {liveCombined}%
-              </div>
-              <div style={{ fontSize: 12, color: C.txt2, textAlign: "right", lineHeight: 1.5 }}>
-                Probability
-                <br />
-                of outcome
-              </div>
+              {liveCombined}%
             </div>
-
-            <div
-              style={{
-                fontSize: 12,
-                color: C.txt2,
-                lineHeight: 1.6,
-                padding: "10px 12px",
-                backgroundColor: C.borderL,
-                borderRadius: 8,
-                marginBottom: 14,
-              }}
-            >
-              {hasHumanData
-                ? "AI models are more optimistic than experts. The combined signal remains moderated by expert input."
-                : "No human forecasts yet. Current signal reflects the AI baseline only."}
+            <div style={{ fontSize: 12, color: C.txt2, fontFamily: FF, marginBottom: 16 }}>
+              Combined forecast
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-              <div style={{ padding: "10px 12px", backgroundColor: C.humanBg, borderRadius: 8, textAlign: "center" }}>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  backgroundColor: C.humanBg,
+                  borderRadius: 8,
+                  textAlign: "center",
+                }}
+              >
                 <div style={{ fontSize: 20, fontWeight: 800, color: C.humanTxt }}>
-                  {hasHumanData ? `${liveHuman}%` : "—"}
+                  {liveContributors > 0 ? `${liveHuman}%` : "—"}
                 </div>
                 <div style={{ fontSize: 11, color: C.humanTxt, marginTop: 2 }}>Human</div>
               </div>
-              <div style={{ padding: "10px 12px", backgroundColor: C.aiBg, borderRadius: 8, textAlign: "center" }}>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  backgroundColor: C.aiBg,
+                  borderRadius: 8,
+                  textAlign: "center",
+                }}
+              >
                 <div style={{ fontSize: 20, fontWeight: 800, color: C.aiTxt }}>{signal.ai}%</div>
                 <div style={{ fontSize: 11, color: C.aiTxt, marginTop: 2 }}>AI</div>
               </div>
             </div>
 
-            <StatRow label="Contributors" value={liveContributors} />
-            <StatRow label="Verified Experts" value={signal.verifiedExperts} />
-            <StatRow label="Signal Strength" value={signal.signalStrength} />
-            <StatRow label="AI Models" value={signal.aiModels} />
-
-            <button onClick={() => onSubmit(signal)} style={{ ...primaryBtn, width: "100%", marginTop: 14 }}>
-              {liveContributors === 0 ? "Be the first to forecast" : "Submit prediction"}
-            </button>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SubmitPage({ signal, onBack, onSave, isSaving }) {
-  const { isMobile } = useBreakpoint();
-  const [probability, setProbability] = useState(50);
-  const [confidence, setConfidence] = useState("Medium confidence");
-  const [rationale, setRationale] = useState("");
-
-  const probabilityLabel = getProbabilityLabel(probability);
-
-  return (
-    <div
-      style={{
-        maxWidth: 820,
-        margin: "0 auto",
-        padding: isMobile ? "28px 16px 44px" : "34px 36px 60px",
-      }}
-    >
-      <button onClick={onBack} style={secondaryBtn}>
-        ← Back
-      </button>
-
-      <Card style={{ marginTop: 20, padding: isMobile ? 18 : 34 }}>
-      <div style={{ fontFamily: FF, fontSize: 14, color: "#64748B", marginBottom: 10 }}>
-  {signal.category}
-</div>
-
-<div
-  style={{
-    fontFamily: FF,
-    fontSize: 14,
-    fontWeight: 700,
-    color: "#475569",
-    marginBottom: 10,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  }}
->
-  Make your prediction
-</div>
-
-<h1
-  style={{
-    fontFamily: FF,
-    fontSize: isMobile ? 34 : 36,
-    fontWeight: 800,
-    color: "#0F172A",
-    margin: "0 0 24px",
-    lineHeight: 1.15,
-    letterSpacing: "-0.02em",
-  }}
->
-  {signal.question}
-</h1>
-
-        <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              color: C.txt,
-              marginBottom: 12,
-              fontFamily: FF,
-            }}
-          >
-            How likely is this outcome?
-          </div>
-
-          <div
-            style={{
-              border: "1px solid #1F2937",
-              borderRadius: 24,
-              padding: isMobile ? 20 : 28,
-              background: "#F8FAFC",
-            }}
-          >
-            <div
-              style={{
-                fontFamily: FF,
-                fontSize: 14,
-                color: "#64748B",
-                marginBottom: 10,
-                letterSpacing: "0.04em",
-                fontWeight: 600,
-              }}
-            >
-              {probabilityLabel}
-            </div>
-
-            <div
-              style={{
-                fontFamily: FF,
-                fontSize: isMobile ? 54 : 72,
-                lineHeight: 1,
-                fontWeight: 800,
-                color: C.txt,
-                marginBottom: 20,
-              }}
-            >
-              {probability}%
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-                marginBottom: 16,
-              }}
-            >
-              {[0, 25, 50, 75, 100].map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setProbability(p)}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {[
+                ["Contributors", liveContributors],
+                ["Verified Experts", signal.verifiedExperts],
+                ["Signal Strength", signal.signalStrength],
+                ["AI Models", signal.aiModels],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
                   style={{
-                    padding: isMobile ? "12px 16px" : "14px 22px",
-                    borderRadius: 20,
-                    border: "1px solid #CBD5E1",
-                    background: probability === p ? C.ink : "#fff",
-                    color: probability === p ? "#fff" : C.txt,
-                    cursor: "pointer",
-                    fontWeight: 700,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 12,
                     fontFamily: FF,
-                    fontSize: isMobile ? 16 : 18,
-                    minWidth: isMobile ? 74 : 92,
-                    boxShadow: probability === p ? "0 4px 14px rgba(15,23,42,0.18)" : "none",
                   }}
                 >
-                  {p}%
-                </button>
+                  <span style={{ color: C.txt3 }}>{label}</span>
+                  <span style={{ color: C.txt, fontWeight: 600 }}>{value}</span>
+                </div>
               ))}
             </div>
+          </Card>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontFamily: FF, fontSize: 13, color: C.txt2 }}>
-                Fine-tune:
-              </span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={probability}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  if (Number.isNaN(next)) return;
-                  setProbability(Math.max(0, Math.min(100, next)));
-                }}
-                style={{
-                  width: 88,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: `1px solid ${C.border}`,
-                  fontFamily: FF,
-                  fontSize: 15,
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              color: C.txt,
-              marginBottom: 8,
-              fontFamily: FF,
-            }}
-          >
-            How confident are you in this estimate?
-          </div>
-
-          <select value={confidence} onChange={(e) => setConfidence(e.target.value)} style={inputStyle}>
-            <option value="Low confidence">Low confidence</option>
-            <option value="Medium confidence">Medium confidence</option>
-            <option value="High confidence">High confidence</option>
-          </select>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              color: C.txt,
-              marginBottom: 8,
-              fontFamily: FF,
-            }}
-          >
-            What’s driving your view? (optional)
-          </div>
-
-          <textarea
-            placeholder="What evidence or intuition matters most here?"
-            value={rationale}
-            onChange={(e) => setRationale(e.target.value)}
-            rows={5}
-            style={{ ...inputStyle, resize: "vertical", marginBottom: 0 }}
+          <InlinePredictionBlock
+            signal={signal}
+            userForecast={userForecast}
+            liveHuman={liveHuman}
+            liveContributors={liveContributors}
+            liveCombined={liveCombined}
+            isSaving={isSaving}
+            onSave={onSave}
+            isAuthenticated={isAuthenticated}
           />
-        </div>
-
-        <div
-          style={{
-            fontFamily: FF,
-            fontSize: 13,
-            color: C.txt2,
-            marginBottom: 14,
-            fontWeight: 500,
-          }}
-        >
-          Your prediction will immediately contribute to the live human signal.
-        </div>
-
-        <button
-          disabled={isSaving}
-          onClick={() => onSave({ probability, confidence, rationale })}
-          style={{
-            ...primaryBtn,
-            width: "100%",
-            opacity: isSaving ? 0.7 : 1,
-            cursor: isSaving ? "not-allowed" : "pointer",
-          }}
-        >
-          {isSaving ? "Saving..." : "Submit Prediction"}
-        </button>
-      </Card>
-    </div>
-  );
-}
-
-function AuthGate({
-  authMode,
-  setAuthMode,
-  email,
-  setEmail,
-  password,
-  setPassword,
-  firstName,
-  setFirstName,
-  lastName,
-  setLastName,
-  role,
-  setRole,
-  onClose,
-  onContinue,
-  onForgotPassword,
-  authStatus,
-}) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: C.overlay,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        zIndex: 100,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          background: "#fff",
-          borderRadius: 16,
-          border: `1px solid ${C.border}`,
-          padding: 24,
-          fontFamily: FF,
-        }}
-      >
-        <h2 style={{ fontSize: 28, margin: "0 0 10px", color: C.txt }}>
-          {authMode === "signup" ? "Create your account" : "Log in"}
-        </h2>
-
-        <p style={{ fontSize: 14, color: C.txt2, lineHeight: 1.6, marginBottom: 18 }}>
-          Save your forecast, build your track record, and track your prediction accuracy over time.
-        </p>
-
-        {authMode === "signup" && (
-          <>
-            <input
-              placeholder="First name (optional)"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              style={inputStyle}
-            />
-
-            <input
-              placeholder="Last name (optional)"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              style={inputStyle}
-            />
-
-            <input
-              placeholder="Role (optional)"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              style={inputStyle}
-            />
-          </>
-        )}
-
-        <input
-          type="email"
-          placeholder="Email (this will be your username)"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={inputStyle}
-        />
-
-        <div style={{ fontSize: 12, color: C.txt2, marginTop: 6, marginBottom: 12 }}>
-          Your email is used as your login and identity on the platform.
-        </div>
-
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={inputStyle}
-        />
-
-        {authMode === "login" && (
-          <div style={{ marginTop: -4, marginBottom: 12, textAlign: "right" }}>
-            <button
-              onClick={onForgotPassword}
-              style={{
-                border: "none",
-                background: "none",
-                color: C.humanTxt,
-                cursor: "pointer",
-                fontWeight: 600,
-                fontSize: 13,
-              }}
-            >
-              Forgot password?
-            </button>
-          </div>
-        )}
-
-        {authStatus && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: C.borderL,
-              color: C.txt2,
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >
-            {authStatus}
-          </div>
-        )}
-
-        <button
-          onClick={onContinue}
-          style={{ ...primaryBtn, width: "100%", marginBottom: 10 }}
-        >
-          {authMode === "signup" ? "Create account" : "Log in"}
-        </button>
-
-        <button
-          onClick={onClose}
-          style={{ ...secondaryBtn, width: "100%", marginBottom: 12 }}
-        >
-          Cancel
-        </button>
-
-        <div style={{ fontSize: 13, color: C.txt2, textAlign: "center" }}>
-          {authMode === "signup" ? (
-            <>
-              Already have an account?{" "}
-              <button
-                onClick={() => setAuthMode("login")}
-                style={{
-                  border: "none",
-                  background: "none",
-                  color: C.humanTxt,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Log in
-              </button>
-            </>
-          ) : (
-            <>
-              New here?{" "}
-              <button
-                onClick={() => setAuthMode("signup")}
-                style={{
-                  border: "none",
-                  background: "none",
-                  color: C.humanTxt,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Create account
-              </button>
-            </>
-          )}
         </div>
       </div>
     </div>
@@ -1713,6 +1753,236 @@ const td = {
   color: C.txt,
 };
 
+function AuthGate({
+  authMode,
+  setAuthMode,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  firstName,
+  setFirstName,
+  lastName,
+  setLastName,
+  role,
+  setRole,
+  onClose,
+  onContinue,
+  onForgotPassword,
+  authStatus,
+  pendingDraft,
+}) {
+  const isSignup = authMode === "signup";
+  const hasDraft = !!pendingDraft;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: C.overlay,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        zIndex: 110,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          background: "#fff",
+          borderRadius: 16,
+          border: `1px solid ${C.border}`,
+          padding: 28,
+          fontFamily: FF,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+          <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.txt }}>
+            {hasDraft
+              ? (isSignup ? "Lock in your prediction" : "Sign in to submit")
+              : (isSignup ? "Create account" : "Sign in")}
+          </h2>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.txt3, padding: "0 0 0 8px", lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+
+        {hasDraft && isSignup && (
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.aiTxt, marginBottom: 12, marginTop: 4 }}>
+            ✨ Get 1,000 Signal Points instantly
+          </div>
+        )}
+
+        {hasDraft && (
+          <div style={{
+            background: C.borderL,
+            borderRadius: 8,
+            padding: "9px 13px",
+            marginBottom: 16,
+            fontSize: 13,
+            color: C.txt2,
+            lineHeight: 1.5,
+          }}>
+            <span style={{ fontWeight: 600, color: C.txt }}>
+              {(pendingDraft.probability ?? 50) >= 50 ? "YES" : "NO"} · {pendingDraft.probability ?? 50}%
+            </span>
+            {pendingDraft.stake ? <> · {pendingDraft.stake} pts staked</> : null}
+            {" — saved automatically after sign-up."}
+          </div>
+        )}
+
+        <p style={{ fontSize: 13, color: C.txt2, margin: "0 0 20px" }}>
+          {isSignup ? (
+            <>
+              Already have an account?{" "}
+              <button
+                onClick={() => setAuthMode("login")}
+                style={{ background: "none", border: "none", color: C.ai, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: FF }}
+              >
+                Sign in
+              </button>
+            </>
+          ) : (
+            <>
+              New here?{" "}
+              <button
+                onClick={() => setAuthMode("signup")}
+                style={{ background: "none", border: "none", color: C.ai, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: FF }}
+              >
+                Create account
+              </button>
+            </>
+          )}
+        </p>
+
+        {isSignup && (
+          <>
+            <input
+              type="text"
+              placeholder="First name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              placeholder="Last name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              style={inputStyle}
+            />
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={{ ...selectStyle, display: "block", width: "100%", marginBottom: 12, boxSizing: "border-box" }}
+            >
+              <option value="">Role (optional)</option>
+              <option value="researcher">Researcher</option>
+              <option value="investor">Investor</option>
+              <option value="engineer">Engineer</option>
+              <option value="policymaker">Policymaker</option>
+              <option value="other">Other</option>
+            </select>
+          </>
+        )}
+
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={inputStyle}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={inputStyle}
+        />
+
+        {authStatus && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: C.borderL,
+              color: C.txt2,
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            {authStatus}
+          </div>
+        )}
+
+        <button onClick={onContinue} style={{ ...primaryBtn, width: "100%", marginBottom: 10 }}>
+          {isSignup ? "Create account" : "Sign in"}
+        </button>
+
+        {!isSignup && (
+          <button
+            onClick={onForgotPassword}
+            style={{ background: "none", border: "none", color: C.txt2, cursor: "pointer", fontSize: 13, fontFamily: FF, padding: 0 }}
+          >
+            Forgot password?
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RewardOverlay({ onDone }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    // Trigger CSS transition on next frame
+    const show = requestAnimationFrame(() => setVisible(true));
+    const dismiss = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onDone, 300); // wait for fade-out before removing
+    }, 1100);
+    return () => { cancelAnimationFrame(show); clearTimeout(dismiss); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(0,0,0,0.35)",
+      opacity: visible ? 1 : 0,
+      transition: "opacity 0.3s ease",
+      pointerEvents: "none",
+    }}>
+      <div style={{
+        background: C.surface,
+        borderRadius: 20,
+        padding: "36px 44px",
+        textAlign: "center",
+        fontFamily: FF,
+        boxShadow: `0 0 0 1px ${C.ai}30, 0 8px 40px rgba(0,0,0,0.18)`,
+        transform: visible ? "scale(1)" : "scale(0.97)",
+        transition: "transform 0.35s ease, opacity 0.3s ease",
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>✨</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.txt, marginBottom: 6 }}>
+          You unlocked 1,000 Signal Points
+        </div>
+        <div style={{ fontSize: 14, color: C.txt2, fontWeight: 400 }}>
+          Welcome to Future Signals
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState("index");
   const [signals, setSignals] = useState([]);
@@ -1724,8 +1994,12 @@ export default function App() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const [currentUser, setCurrentUser] = useState(null);
+  const [userPointsBalance, setUserPointsBalance] = useState(null);
+  const [bonusMessage, setBonusMessage] = useState("");
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [pendingForecast, setPendingForecast] = useState(null);
+  const [showRewardOverlay, setShowRewardOverlay] = useState(false);
+  const [rewardJustLanded, setRewardJustLanded] = useState(false);
 
   const [authMode, setAuthMode] = useState("signup");
   const [authEmail, setAuthEmail] = useState("");
@@ -1742,7 +2016,7 @@ export default function App() {
     const { data, error } = await supabase
       .from("signals")
       .select("*")
-      .eq("status", "open")
+      .eq("status", "active")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -1790,6 +2064,15 @@ export default function App() {
   useEffect(() => {
     fetchSignals();
     fetchAllForecasts();
+
+    const channel = supabase
+      .channel("signals-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, () => {
+        fetchSignals();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
   useEffect(() => {
@@ -1798,13 +2081,45 @@ export default function App() {
     }
   }, [signals, activeSignalId]);
 
+  const fetchUserPoints = async (userId) => {
+    if (!userId) return null;
+    const { data, error } = await supabase
+      .from("user_points")
+      .select("balance")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!error && data != null) {
+      setUserPointsBalance(data.balance);
+      return data.balance;
+    }
+    return null;
+  };
+
+  const bootstrapUserPoints = async (userId) => {
+    if (!userId) return;
+    const balance = await fetchUserPoints(userId);
+    if (balance === null) {
+      // No row yet — claim signup bonus (idempotent at DB level)
+      try {
+        await supabase.rpc("claim_signup_bonus");
+      } catch (_) {}
+      const fresh = await fetchUserPoints(userId);
+      if (fresh !== null) {
+        setBonusMessage("🎉 Welcome bonus awarded! Your Signal Points are ready.");
+        setTimeout(() => setBonusMessage(""), 7000);
+      }
+    }
+  };
+
   useEffect(() => {
     const loadSession = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      setCurrentUser(session?.user ?? null);
+      const user = session?.user ?? null;
+      setCurrentUser(user);
+      if (user) bootstrapUserPoints(user.id);
     };
 
     loadSession();
@@ -1812,7 +2127,10 @@ export default function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user ?? null);
+      const user = session?.user ?? null;
+      setCurrentUser(user);
+      if (user) bootstrapUserPoints(user.id);
+      if (!user) setUserPointsBalance(null);
     });
 
     return () => subscription.unsubscribe();
@@ -1845,6 +2163,7 @@ export default function App() {
 
   const liveCombined = useMemo(() => {
     if (!activeSignalBase) return 0;
+    if (activeSignalBase.combined_signal != null) return activeSignalBase.combined_signal;
     if (liveContributors === 0) return activeSignalBase.ai_consensus || 0;
     return Math.round(liveHuman * 0.6 + (activeSignalBase.ai_consensus || 0) * 0.4);
   }, [liveHuman, liveContributors, activeSignalBase]);
@@ -1861,7 +2180,7 @@ export default function App() {
         : 0;
 
       const contributorCount = rows.length;
-      const combined = hasHumanData
+      const calculatedCombined = hasHumanData
         ? Math.round(human * 0.6 + (signal.ai_consensus || 0) * 0.4)
         : signal.ai_consensus || 0;
 
@@ -1872,13 +2191,13 @@ export default function App() {
         resolutionDate: signal.resolution_date,
         human,
         ai: signal.ai_consensus || 0,
-        combined,
+        combined: signal.combined_signal ?? calculatedCombined,
         contributorCount,
         hasHumanData,
-        signalStrength: signal.signal_strength || "Moderate",
+        signalStrength: signal.signal_strength || null,
         verifiedExperts: signal.verified_experts_count || 0,
         aiModels: signal.ai_models_count || 0,
-        divergence: hasHumanData ? Math.abs((signal.ai_consensus || 0) - human) : 0,
+        divergence: signal.divergence ?? (hasHumanData ? Math.abs((signal.ai_consensus || 0) - human) : 0),
       };
     });
   }, [signals, forecastRowsBySignal]);
@@ -1892,12 +2211,12 @@ export default function App() {
       resolutionDate: activeSignalBase.resolution_date,
       human: liveHuman,
       ai: activeSignalBase.ai_consensus || 0,
-      combined: liveCombined,
+      combined: activeSignalBase.combined_signal ?? liveCombined,
       contributorCount: liveContributors,
-      signalStrength: activeSignalBase.signal_strength || "Moderate",
+      signalStrength: activeSignalBase.signal_strength || null,
       verifiedExperts: activeSignalBase.verified_experts_count || 0,
       aiModels: activeSignalBase.ai_models_count || 0,
-      divergence: liveContributors > 0 ? Math.abs((activeSignalBase.ai_consensus || 0) - liveHuman) : 0,
+      divergence: activeSignalBase.divergence ?? (liveContributors > 0 ? Math.abs((activeSignalBase.ai_consensus || 0) - liveHuman) : 0),
     };
   }, [activeSignalBase, liveHuman, liveContributors, liveCombined]);
 
@@ -1954,19 +2273,21 @@ export default function App() {
 
     if (Number.isNaN(probabilityNumber) || probabilityNumber < 0 || probabilityNumber > 100) {
       setSuccessMessage("Please enter a valid probability between 0 and 100.");
-      return;
+      return false;
     }
 
     if (!currentUser) {
       setPendingForecast(data);
-      setShowAuthGate(true);
+      setAuthMode("signup");
       setAuthStatus("");
-      return;
+      setShowAuthGate(true);
+      return false;
     }
 
     setIsSaving(true);
-    await saveForecastToDatabase(data, currentUser);
+    const ok = await saveForecastToDatabase(data, currentUser);
     setIsSaving(false);
+    return ok;
   };
 
   const handleAuthSubmit = async () => {
@@ -2001,13 +2322,14 @@ export default function App() {
             setPendingForecast(null);
             setShowAuthGate(false);
             setAuthStatus("");
-            setSuccessMessage("Account created and prediction saved.");
+            setSuccessMessage("✅ Prediction recorded. Your signal is now part of the market.");
             setAuthMode("signup");
             setAuthEmail("");
             setAuthPassword("");
             setAuthFirstName("");
             setAuthLastName("");
             setAuthRole("");
+            setShowRewardOverlay(true);
           }
         } else {
           setShowAuthGate(false);
@@ -2018,6 +2340,7 @@ export default function App() {
           setAuthFirstName("");
           setAuthLastName("");
           setAuthRole("");
+          setShowRewardOverlay(true);
         }
       }
     } else {
@@ -2118,6 +2441,15 @@ export default function App() {
       return;
     }
 
+    if (targetPage === "submit") {
+      if (effectiveSignal) {
+        setPage("detail");
+      } else {
+        setPage("index");
+      }
+      return;
+    }
+
     setPage(targetPage);
   };
 
@@ -2128,7 +2460,34 @@ export default function App() {
         onNav={onNav}
         currentUser={currentUser}
         onSignOut={handleSignOut}
+        userStats={currentUser && userPointsBalance != null ? { points: userPointsBalance, streak: null, accuracy: null } : null}
+        rewardJustLanded={rewardJustLanded}
       />
+
+      {bonusMessage && (
+        <div
+          style={{
+            background: "#ECFDF5",
+            borderBottom: "1px solid #A7F3D0",
+            padding: "12px 20px",
+            fontFamily: FF,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#065F46",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          {bonusMessage}
+          <button
+            onClick={() => setBonusMessage("")}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#065F46", lineHeight: 1, padding: "0 0 0 12px" }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {page === "index" && (
         <SignalsIndexPage
@@ -2149,25 +2508,15 @@ export default function App() {
             setSuccessMessage("");
             setPage("index");
           }}
-          onSubmit={() => setPage("submit")}
+          onSave={handleSaveForecast}
           userForecast={userForecast}
           liveHuman={liveHuman}
           liveContributors={liveContributors}
           liveCombined={liveCombined}
           isLoading={isLoading}
-          successMessage={successMessage}
-        />
-      )}
-
-      {page === "submit" && effectiveSignal && (
-        <SubmitPage
-          signal={effectiveSignal}
-          onBack={() => {
-            setSuccessMessage("");
-            setPage("detail");
-          }}
-          onSave={handleSaveForecast}
           isSaving={isSaving}
+          successMessage={successMessage}
+          isAuthenticated={!!currentUser}
         />
       )}
 
@@ -2193,6 +2542,17 @@ export default function App() {
           onContinue={handleAuthSubmit}
           onForgotPassword={handleForgotPassword}
           authStatus={authStatus}
+          pendingDraft={pendingForecast}
+        />
+      )}
+
+      {showRewardOverlay && (
+        <RewardOverlay
+          onDone={() => {
+            setShowRewardOverlay(false);
+            setRewardJustLanded(true);
+            setTimeout(() => setRewardJustLanded(false), 1800);
+          }}
         />
       )}
 
