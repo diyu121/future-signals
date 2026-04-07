@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 import { mapCategory } from "./lib/categoryMapping";
-import { getSignalHook } from "./lib/signalHooks";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -40,6 +39,10 @@ const C = {
 };
 
 const FF = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif";
+
+// Display helpers — round all percentages and deltas to whole numbers
+const fmtPct = (v) => (v == null ? "" : `${Math.round(v)}%`);
+const fmtDelta = (v) => (v == null ? "" : `${Math.round(v)} pts`);
 
 const LEADERBOARD = [
   { rank: 1, name: "Dr. Sarah Chen", type: "Human", domain: "AI Research", accuracy: "87%", calibration: "0.82", reputation: 94, influence: "High" },
@@ -130,6 +133,56 @@ function getProbabilityLabel(p) {
   return "CUSTOM";
 }
 
+// ── Global categories ────────────────────────────────────────────────────────
+// Single source of truth — used by CategoryBar, SignalsIndexPage, LeaderboardPage
+const CATEGORIES = ["All", "AI & ML", "Policy", "Safety", "Economics", "Science"];
+
+// Map a UI category label to a compact URL slug and back
+const CATEGORY_SLUG = {
+  "All": "",
+  "AI & ML": "ai-ml",
+  "Policy": "policy",
+  "Safety": "safety",
+  "Economics": "economics",
+  "Science": "science",
+};
+const SLUG_TO_CATEGORY = Object.fromEntries(
+  Object.entries(CATEGORY_SLUG).map(([label, slug]) => [slug, label])
+);
+
+function useCategoryParam() {
+  const getFromURL = () => {
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get("category") || "";
+    return SLUG_TO_CATEGORY[slug] ?? "All";
+  };
+
+  const [selected, setSelectedRaw] = useState(getFromURL);
+
+  // Sync from popstate (browser back/forward)
+  useEffect(() => {
+    const handler = () => setSelectedRaw(getFromURL());
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setSelected = (label) => {
+    const slug = CATEGORY_SLUG[label] ?? "";
+    const params = new URLSearchParams(window.location.search);
+    if (slug) {
+      params.set("category", slug);
+    } else {
+      params.delete("category");
+    }
+    const newSearch = params.toString();
+    const newURL = newSearch ? `?${newSearch}` : window.location.pathname;
+    window.history.pushState({}, "", newURL);
+    setSelectedRaw(label);
+  };
+
+  return [selected, setSelected];
+}
+
 function useBreakpoint() {
   const [width, setWidth] = useState(
     typeof window !== "undefined" ? window.innerWidth : 1280
@@ -213,7 +266,60 @@ function MetaPill({ label, value, highlight = false }) {
   );
 }
 
-function TopNav({ page, onNav, currentUser, onSignOut, userStats, rewardJustLanded }) {
+// Pages where the category bar is shown
+const CATEGORY_BAR_PAGES = new Set(["index", "leaderboard"]);
+
+function CategoryBar({ selected, onSelect }) {
+  const { isMobile } = useBreakpoint();
+  return (
+    <div
+      style={{
+        borderTop: `1px solid ${C.border}`,
+        background: C.surface,
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: isMobile ? "0 12px" : "0 20px",
+          display: "flex",
+          gap: 2,
+          overflowX: "auto",
+          scrollbarWidth: "none",
+        }}
+      >
+        {CATEGORIES.map((cat) => {
+          const active = selected === cat;
+          return (
+            <button
+              key={cat}
+              onClick={() => onSelect(cat)}
+              style={{
+                padding: isMobile ? "10px 12px" : "11px 16px",
+                border: "none",
+                background: "none",
+                cursor: "pointer",
+                fontFamily: FF,
+                fontSize: isMobile ? 13 : 14,
+                fontWeight: active ? 700 : 500,
+                color: active ? C.txt : C.txt2,
+                whiteSpace: "nowrap",
+                borderBottom: active ? `2px solid ${C.ink}` : "2px solid transparent",
+                borderRadius: 0,
+                transition: "color 0.15s, border-color 0.15s",
+              }}
+            >
+              {cat}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TopNav({ page, onNav, currentUser, onSignOut, userStats, rewardJustLanded, selectedCategory, onSelectCategory }) {
   const { isMobile } = useBreakpoint();
 
   // Animate points 0 → real value when reward lands
@@ -244,6 +350,7 @@ function TopNav({ page, onNav, currentUser, onSignOut, userStats, rewardJustLand
     ["leaderboard", "Leaderboard"],
     ["models", "AI Models"],
     ["methodology", "Methodology"],
+    ["company", "Company"],
   ];
 
   const userLabel =
@@ -348,7 +455,7 @@ function TopNav({ page, onNav, currentUser, onSignOut, userStats, rewardJustLand
                     ⚡ {displayedPoints.toLocaleString()} pts
                   </span>
                   {userStats.streak > 0 && <span style={{ color: C.txt2 }}>🔥 {userStats.streak} streak</span>}
-                  {userStats.accuracy != null && <span style={{ color: C.txt2 }}>🎯 {userStats.accuracy}%</span>}
+                  {userStats.accuracy != null && <span style={{ color: C.txt2 }}>🎯 {fmtPct(userStats.accuracy)}</span>}
                 </div>
               )}
               {!isMobile && (
@@ -413,17 +520,20 @@ function TopNav({ page, onNav, currentUser, onSignOut, userStats, rewardJustLand
           </div>
         )}
       </div>
+      {CATEGORY_BAR_PAGES.has(page) && (
+        <CategoryBar selected={selectedCategory} onSelect={onSelectCategory} />
+      )}
     </nav>
   );
 }
 
-function SignalsIndexPage({ signals, onOpen, userForecasts }) {
+function SignalsIndexPage({ signals, onOpen, userForecasts, selectedCategory }) {
   const { isMobile } = useBreakpoint();
-  const [category, setCategory] = useState("All");
-  const categories = ["All", "AI & ML", "Policy", "Safety", "Economics", "Science"];
 
   const filtered =
-    category === "All" ? signals : signals.filter((signal) => mapCategory(signal.category) === category);
+    selectedCategory === "All"
+      ? signals
+      : signals.filter((signal) => mapCategory(signal.category) === selectedCategory);
 
   return (
     <div
@@ -433,45 +543,16 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
         padding: isMobile ? "28px 16px 44px" : "42px 36px 60px",
       }}
     >
-      <h1 style={{ fontFamily: FF, fontSize: isMobile ? 28 : 34, color: C.txt, margin: "0 0 12px" }}>
-        Forecast Signals
-      </h1>
-      <p style={{ fontFamily: FF, color: C.txt2, fontSize: 15, marginBottom: 28 }}>
-        Forecast the questions that move markets. See where experts and AI disagree before consensus forms.
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 26,
-          gap: 12,
-          flexDirection: isMobile ? "column" : "row",
-        }}
-      >
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 12,
-                border: `1px solid ${C.border}`,
-                background: category === c ? C.ink : C.surface,
-                color: category === c ? "white" : C.txt2,
-                cursor: "pointer",
-                fontFamily: FF,
-                fontSize: 14,
-                fontWeight: 500,
-              }}
-            >
-              {c}
-            </button>
-          ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontFamily: FF, fontSize: isMobile ? 28 : 34, color: C.txt, margin: "0 0 8px" }}>
+            {selectedCategory === "All" ? "Forecast Signals" : selectedCategory}
+          </h1>
+          <p style={{ fontFamily: FF, color: C.txt2, fontSize: 15, margin: 0 }}>
+            Forecast the questions that move markets. See where experts and AI disagree before consensus forms.
+          </p>
         </div>
-
-        <select style={{ ...selectStyle, width: isMobile ? "100%" : "auto" }} defaultValue="Highest Signal">
+        <select style={{ ...selectStyle, width: isMobile ? "100%" : "auto", flexShrink: 0 }} defaultValue="Highest Signal">
           <option>Highest Signal</option>
           <option>Most Active</option>
           <option>Highest Divergence</option>
@@ -509,18 +590,13 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
                 {/* Main row: question + combined % */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 12 }}>
                   <div style={{ flex: 1 }}>
-                    {getSignalHook(signal.id) && (
-                      <div style={{ fontFamily: FF, fontSize: isMobile ? 17 : 19, fontWeight: 700, color: C.txt, lineHeight: 1.3, marginBottom: 4 }}>
-                        {getSignalHook(signal.id)}
-                      </div>
-                    )}
-                    <div style={{ fontFamily: FF, fontSize: isMobile ? 14 : 15, fontWeight: getSignalHook(signal.id) ? 400 : 600, color: getSignalHook(signal.id) ? C.txt2 : C.txt, lineHeight: 1.45 }}>
+                    <div style={{ fontFamily: FF, fontSize: isMobile ? 14 : 15, fontWeight: 600, color: C.txt, lineHeight: 1.45 }}>
                       {signal.question}
                     </div>
                   </div>
                   <div style={{ flexShrink: 0, textAlign: "right" }}>
                     <div style={{ fontFamily: FF, fontSize: isMobile ? 24 : 28, fontWeight: 800, color: C.txt, lineHeight: 1 }}>
-                      {signal.combined}%
+                      {fmtPct(signal.combined)}
                     </div>
                   </div>
                 </div>
@@ -529,15 +605,15 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontFamily: FF, fontSize: 13, color: C.txt2, marginBottom: 10, alignItems: "center" }}>
                   <span>
                     <span style={{ color: C.human }}>●</span>{" "}
-                    Human <strong style={{ color: C.humanTxt }}>{signal.hasHumanData ? `${signal.human}%` : "—"}</strong>
+                    Human <strong style={{ color: C.humanTxt }}>{signal.hasHumanData ? fmtPct(signal.human) : "—"}</strong>
                   </span>
                   <span>
                     <span style={{ color: C.ai }}>●</span>{" "}
-                    AI <strong style={{ color: C.aiTxt }}>{signal.ai}%</strong>
+                    AI <strong style={{ color: C.aiTxt }}>{fmtPct(signal.ai)}</strong>
                   </span>
                   {aiDelta != null && (
                     <span style={{ color: C.txt3 }}>
-                      {aiDelta === 0 ? "Aligned" : aiDelta > 0 ? `AI +${aiDelta} pts` : `AI −${Math.abs(aiDelta)} pts`}
+                      {aiDelta === 0 ? "Aligned" : aiDelta > 0 ? `AI +${Math.round(aiDelta)} pts` : `AI −${Math.round(Math.abs(aiDelta))} pts`}
                     </span>
                   )}
                   {!signal.hasHumanData && <span style={{ color: C.txt3 }}>AI baseline only</span>}
@@ -547,7 +623,7 @@ function SignalsIndexPage({ signals, onOpen, userForecasts }) {
                 <div style={{ fontFamily: FF, fontSize: 13, color: C.txt3, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                   {hasContributed && (
                     <span style={{ color: C.successTxt, fontWeight: 600 }}>
-                      Your position: {myForecast.probability >= 50 ? "YES" : "NO"} · {myForecast.probability}%
+                      Your position: {myForecast.probability >= 50 ? "YES" : "NO"} · {fmtPct(myForecast.probability)}
                     </span>
                   )}
                   {hasContributed && <span>·</span>}
@@ -590,7 +666,7 @@ function ChartTooltip({ active, payload, label }) {
           }}
         >
           <span style={{ color: C.txt2 }}>{p.name}</span>
-          <strong style={{ color: C.txt }}>{p.value}%</strong>
+          <strong style={{ color: C.txt }}>{fmtPct(p.value)}</strong>
         </div>
       ))}
     </div>
@@ -600,7 +676,7 @@ function ChartTooltip({ active, payload, label }) {
 function EvidenceAnalysis({ isMobile, aiSummary }) {
   const overall = aiSummary?.overall ?? {};
   const profileSummary = aiSummary?.profile_summary ?? {};
-  const sysExp = aiSummary?.system_explanation ?? {};
+  const synthesis = aiSummary?.synthesis ?? {};
 
   const disagreementScore = overall.disagreement_score ?? null;
   const disagreementLabel =
@@ -620,16 +696,16 @@ function EvidenceAnalysis({ isMobile, aiSummary }) {
   const confWeighted = overall.confidence_weighted_baseline ?? null;
   const showSignalConstruction = aiBaseline != null || weightedBaseline != null || confWeighted != null;
 
-  const primaryDriver = sysExp.baseline ?? "Benchmark convergence and open-weight momentum";
-  const mainConstraint = "Enterprise reliability, safety infrastructure, and deployment quality";
-  const netEffect = sysExp.key_tension ?? "Moderate probability with meaningful disagreement across perspectives";
+  // Live synthesis fields — fall back to static copy only if synthesis is absent
+  const primaryDriver = synthesis.primary_driver ?? "Benchmark convergence and open-weight momentum";
+  const mainConstraint = synthesis.main_constraint ?? "Enterprise reliability, safety infrastructure, and deployment quality";
+  const netEffect = synthesis.net_effect ?? "Moderate probability with meaningful disagreement across perspectives";
 
-  const researcherText = sysExp.key_tension ?? AI_SYNTHESIS.bullCase;
-  const investorText = sysExp.disagreement_interpretation ?? AI_SYNTHESIS.bearCase;
-  const whyDifferText =
-    sysExp.disagreement_interpretation
-      ? sysExp.disagreement_interpretation
-      : "The researcher lens weights benchmark progress and scaling trends. The investor lens weights adoption friction and execution risk. The final signal reconciles both.";
+  const researcherText = synthesis.researcher_view ?? AI_SYNTHESIS.bullCase;
+  const investorText = synthesis.investor_view ?? AI_SYNTHESIS.bearCase;
+  const keyUncertaintyText = synthesis.key_uncertainty ?? AI_SYNTHESIS.keyUncertainty;
+  const whyDifferText = synthesis.why_disagree
+    ?? "The researcher lens weights benchmark progress and scaling trends. The investor lens weights adoption friction and execution risk. The final signal reconciles both.";
 
   return (
     <div style={{ fontFamily: FF }}>
@@ -705,7 +781,7 @@ function EvidenceAnalysis({ isMobile, aiSummary }) {
           </div>
           {disagreementLabel && (
             <div style={{ fontSize: 13, fontWeight: 600, color: disagreementColor, marginBottom: 12 }}>
-              {disagreementLabel} disagreement{disagreementScore != null ? ` • ${disagreementScore} pt spread` : ""}
+              {disagreementLabel} disagreement{disagreementScore != null ? ` • ${Math.round(disagreementScore)} pt spread` : ""}
             </div>
           )}
           <div style={{ display: "flex", gap: 24 }}>
@@ -727,7 +803,7 @@ function EvidenceAnalysis({ isMobile, aiSummary }) {
                   >
                     {label}
                   </span>
-                  <span style={{ fontSize: 17, fontWeight: 700, color: C.txt }}>{val}%</span>
+                  <span style={{ fontSize: 17, fontWeight: 700, color: C.txt }}>{fmtPct(val)}</span>
                 </div>
               ) : null
             )}
@@ -746,7 +822,7 @@ function EvidenceAnalysis({ isMobile, aiSummary }) {
           {[
             ["RESEARCHER VIEW", "Technical Lens", researcherText, "#0F766E", "#F0FDFA"],
             ["INVESTOR VIEW", "Deployment Lens", investorText, "#C2410C", "#FFF7ED"],
-            ["KEY UNCERTAINTY", null, AI_SYNTHESIS.keyUncertainty, "#F59E0B", "#FFFBEB"],
+            ["KEY UNCERTAINTY", null, keyUncertaintyText, "#F59E0B", "#FFFBEB"],
           ].map(([label, sublabel, text, color, bg], i) => (
             <div
               key={label}
@@ -827,7 +903,7 @@ function EvidenceAnalysis({ isMobile, aiSummary }) {
                   }}
                 >
                   <span style={{ fontSize: 13, color: C.txt2 }}>{label}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: C.txt }}>{val}%</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.txt }}>{fmtPct(val)}</span>
                 </div>
               ) : null
             )}
@@ -1014,7 +1090,7 @@ function InlinePredictionBlock({
             <span style={{ padding: "3px 10px", borderRadius: 999, background: posColor, color: "#fff", fontSize: 12, fontWeight: 800 }}>
               {posDir}
             </span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: posColor }}>{posProb}%</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: posColor }}>{fmtPct(posProb)}</span>
             <span style={{ fontSize: 12, color: C.txt3 }}>· {stake} pts staked</span>
           </div>
           {rationale ? (
@@ -1052,11 +1128,11 @@ function InlinePredictionBlock({
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: 13, color: C.txt2 }}>You entered at</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.txt }}>{posProb}%</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.txt }}>{fmtPct(posProb)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: 13, color: C.txt2 }}>Current signal</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.txt }}>{liveCombined}%</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.txt }}>{fmtPct(liveCombined)}</span>
             </div>
             {posDelta != null && (
               <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.border}`, paddingTop: 6, marginTop: 2 }}>
@@ -1145,10 +1221,10 @@ function InlinePredictionBlock({
             />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ fontSize: 26, fontWeight: 800, color: activeColor, fontFamily: FF, letterSpacing: "-0.03em" }}>
-                {currentProb}%
+                {fmtPct(currentProb)}
               </span>
               <span style={{ fontSize: 12, color: C.txt3, fontFamily: FF }}>
-                Current signal: {liveCombined}%
+                Current signal: {fmtPct(liveCombined)}
               </span>
             </div>
           </div>
@@ -1209,6 +1285,8 @@ function InlinePredictionBlock({
 function SignalDetailPage({
   signal,
   onBack,
+  onNavigate,
+  allSignals,
   onSave,
   userForecast,
   liveHuman,
@@ -1218,10 +1296,52 @@ function SignalDetailPage({
   isSaving,
   successMessage,
   isAuthenticated,
+  aiSummary,
 }) {
   const { isMobile, isTablet } = useBreakpoint();
   const stackRightRail = isMobile || isTablet;
   const hasHumanData = liveContributors > 0;
+
+  // Category-scoped prev/next navigation
+  const categorySignals = useMemo(
+    () => (allSignals || []).filter((s) => s.category === signal.category),
+    [allSignals, signal.category]
+  );
+  const currentIndex = categorySignals.findIndex((s) => String(s.id) === String(signal.id));
+  const prevSignal = currentIndex > 0 ? categorySignals[currentIndex - 1] : null;
+  const nextSignal = currentIndex < categorySignals.length - 1 ? categorySignals[currentIndex + 1] : null;
+  const posLabel = categorySignals.length > 1
+    ? `${currentIndex + 1} / ${categorySignals.length}`
+    : null;
+
+  const [hoveredNav, setHoveredNav] = useState(null); // "prev" | "next" | null
+
+  const truncate = (str, n) => (str && str.length > n ? str.slice(0, n) + "…" : str);
+
+  const navArrowStyle = (which, signal) => {
+    const active = !!signal;
+    const hovered = active && hoveredNav === which;
+    return {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: 36,
+      height: 36,
+      minWidth: 36,
+      borderRadius: 7,
+      border: "none",
+      background: !active ? "#E5E7EB" : hovered ? "#374151" : C.ink,
+      color: !active ? "#9CA3AF" : "#FFFFFF",
+      fontSize: 18,
+      lineHeight: 1,
+      fontFamily: FF,
+      cursor: active ? "pointer" : "default",
+      transition: "background 0.12s, transform 0.1s",
+      transform: hovered ? "scale(1.05)" : "scale(1)",
+      userSelect: "none",
+      flexShrink: 0,
+    };
+  };
 
   return (
     <div
@@ -1231,9 +1351,92 @@ function SignalDetailPage({
         padding: isMobile ? "28px 16px 44px" : "34px 36px 60px",
       }}
     >
-      <button onClick={onBack} style={secondaryBtn}>
-        ← Back
-      </button>
+      {/* Back + prev/next row */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 6,
+          flexWrap: "nowrap",
+        }}
+      >
+        <button onClick={onBack} style={{ ...secondaryBtn, flexShrink: 0 }}>
+          ← Back
+        </button>
+
+        {posLabel && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+            {/* Category context label — desktop only */}
+            {!isMobile && (
+              <span
+                style={{
+                  fontFamily: FF,
+                  fontSize: 11,
+                  color: C.txt3,
+                  letterSpacing: "0.02em",
+                  userSelect: "none",
+                }}
+              >
+                {mapCategory(signal.category)} signals
+              </span>
+            )}
+
+            {/* Nav pill */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 4,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+              }}
+            >
+              <button
+                onClick={() => prevSignal && onNavigate(prevSignal)}
+                disabled={!prevSignal}
+                title={prevSignal ? prevSignal.question : undefined}
+                onMouseEnter={() => prevSignal && setHoveredNav("prev")}
+                onMouseLeave={() => setHoveredNav(null)}
+                style={navArrowStyle("prev", prevSignal)}
+              >
+                ‹
+              </button>
+
+              <span
+                style={{
+                  fontFamily: FF,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: C.txt,
+                  minWidth: 48,
+                  textAlign: "center",
+                  whiteSpace: "nowrap",
+                  userSelect: "none",
+                  padding: "0 4px",
+                }}
+              >
+                {posLabel}
+              </span>
+
+              <button
+                onClick={() => nextSignal && onNavigate(nextSignal)}
+                disabled={!nextSignal}
+                title={nextSignal ? nextSignal.question : undefined}
+                onMouseEnter={() => nextSignal && setHoveredNav("next")}
+                onMouseLeave={() => setHoveredNav(null)}
+                style={navArrowStyle("next", nextSignal)}
+              >
+                ›
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ marginTop: 22, marginBottom: 20 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -1270,9 +1473,9 @@ function SignalDetailPage({
             paddingBottom: isMobile ? 4 : 0,
           }}
         >
-          <MetaPill label="Combined Signal" value={`${liveCombined}%`} highlight />
-          <MetaPill label="Human Consensus" value={hasHumanData ? `${liveHuman}%` : "No data"} />
-          <MetaPill label="AI Consensus" value={`${signal.ai}%`} />
+          <MetaPill label="Combined Signal" value={fmtPct(liveCombined)} highlight />
+          <MetaPill label="Human Consensus" value={hasHumanData ? fmtPct(liveHuman) : "No data"} />
+          <MetaPill label="AI Consensus" value={fmtPct(signal.ai)} />
           <MetaPill label="Resolves" value={signal.resolutionDate} />
           <MetaPill label="Contributors" value={liveContributors} />
         </div>
@@ -1359,7 +1562,7 @@ function SignalDetailPage({
                 Human / AI Divergence is Elevated
               </div>
               <div style={{ fontSize: 13, color: "#92400E", lineHeight: 1.55 }}>
-                AI models are <strong>{Math.abs(signal.ai - liveHuman)} points</strong> more
+                AI models are <strong>{Math.round(Math.abs(signal.ai - liveHuman))} points</strong> more
                 optimistic than expert consensus.
               </div>
             </div>
@@ -1398,7 +1601,7 @@ function SignalDetailPage({
                 Your Prediction
               </div>
               <div style={{ fontSize: 13, color: C.txt }}>
-                Probability: <strong>{userForecast.probability}%</strong>{userForecast.confidence != null ? <> · Confidence: <strong>{userForecast.confidence}</strong></> : null}{" "}
+                Probability: <strong>{fmtPct(userForecast.probability)}</strong>{userForecast.confidence != null ? <> · Confidence: <strong>{userForecast.confidence}</strong></> : null}{" "}
                 {userForecast.stake ? <>· Stake: <strong>{userForecast.stake}</strong></> : null}
               </div>
               {userForecast.rationale ? (
@@ -1408,7 +1611,7 @@ function SignalDetailPage({
           )}
 
           <Card style={{ padding: isMobile ? "18px 16px" : "22px 24px" }}>
-            <EvidenceAnalysis isMobile={isMobile} aiSummary={null} />
+            <EvidenceAnalysis isMobile={isMobile} aiSummary={aiSummary} />
           </Card>
         </div>
 
@@ -1430,6 +1633,7 @@ function SignalDetailPage({
 
             <div
               style={{
+                fontFamily: FF,
                 fontSize: 42,
                 fontWeight: 800,
                 color: C.txt,
@@ -1438,7 +1642,7 @@ function SignalDetailPage({
                 marginBottom: 4,
               }}
             >
-              {liveCombined}%
+              {fmtPct(liveCombined)}
             </div>
             <div style={{ fontSize: 12, color: C.txt2, fontFamily: FF, marginBottom: 16 }}>
               Combined forecast
@@ -1453,10 +1657,10 @@ function SignalDetailPage({
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: 20, fontWeight: 800, color: C.humanTxt }}>
-                  {liveContributors > 0 ? `${liveHuman}%` : "—"}
+                <div style={{ fontFamily: FF, fontSize: 20, fontWeight: 600, color: C.humanTxt }}>
+                  {liveContributors > 0 ? fmtPct(liveHuman) : "—"}
                 </div>
-                <div style={{ fontSize: 11, color: C.humanTxt, marginTop: 2 }}>Human</div>
+                <div style={{ fontFamily: FF, fontSize: 11, color: C.humanTxt, marginTop: 2 }}>Human</div>
               </div>
               <div
                 style={{
@@ -1466,8 +1670,8 @@ function SignalDetailPage({
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: 20, fontWeight: 800, color: C.aiTxt }}>{signal.ai}%</div>
-                <div style={{ fontSize: 11, color: C.aiTxt, marginTop: 2 }}>AI</div>
+                <div style={{ fontFamily: FF, fontSize: 20, fontWeight: 600, color: C.aiTxt }}>{fmtPct(signal.ai)}</div>
+                <div style={{ fontFamily: FF, fontSize: 11, color: C.aiTxt, marginTop: 2 }}>AI</div>
               </div>
             </div>
 
@@ -1510,8 +1714,13 @@ function SignalDetailPage({
   );
 }
 
-function LeaderboardPage() {
+function LeaderboardPage({ selectedCategory }) {
   const { isMobile } = useBreakpoint();
+
+  const filteredRows =
+    selectedCategory === "All"
+      ? LEADERBOARD
+      : LEADERBOARD.filter((row) => mapCategory(row.domain) === selectedCategory);
 
   return (
     <div
@@ -1522,7 +1731,7 @@ function LeaderboardPage() {
       }}
     >
       <h1 style={{ fontFamily: FF, fontSize: isMobile ? 28 : 34, color: C.txt, margin: "0 0 12px" }}>
-        Leaderboard
+        {selectedCategory === "All" ? "Leaderboard" : `${selectedCategory} — Leaderboard`}
       </h1>
       <p style={{ fontFamily: FF, color: C.txt2, marginBottom: 24 }}>
         Ranked by forecast quality, calibration, and consistency.
@@ -1530,7 +1739,11 @@ function LeaderboardPage() {
 
       {isMobile ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {LEADERBOARD.map((row) => (
+          {filteredRows.length === 0 ? (
+            <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3, padding: "24px 0" }}>
+              No contributors in this category yet.
+            </div>
+          ) : filteredRows.map((row) => (
             <Card key={row.rank} style={{ padding: 16 }}>
               <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3, marginBottom: 6 }}>
                 Rank #{row.rank}
@@ -1549,6 +1762,10 @@ function LeaderboardPage() {
               </div>
             </Card>
           ))}
+        </div>
+      ) : filteredRows.length === 0 ? (
+        <div style={{ fontFamily: FF, fontSize: 14, color: C.txt3, padding: "32px 0" }}>
+          No contributors in this category yet.
         </div>
       ) : (
         <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -1574,7 +1791,7 @@ function LeaderboardPage() {
               </tr>
             </thead>
             <tbody>
-              {LEADERBOARD.map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.rank} style={{ borderTop: `1px solid ${C.border}` }}>
                   <td style={td}>{row.rank}</td>
                   <td style={td}><strong>{row.name}</strong></td>
@@ -1641,6 +1858,901 @@ function AIModelsPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+const PREVIEW_CARDS = [
+  {
+    category: "AI & ML",
+    categoryBg: C.humanBg,
+    categoryColor: C.humanTxt,
+    headline: "Likely at 77% with tight consensus",
+    pct: 77,
+    primaryDriver: "AI infrastructure demand sustaining rapid revenue growth",
+    mainConstraint: "Customer concentration and revenue timing risk",
+    netEffect: "Signal is slightly bullish with tight consensus across models.",
+  },
+  {
+    category: "AI & ML",
+    categoryBg: C.humanBg,
+    categoryColor: C.humanTxt,
+    headline: "Near-even at 47% with moderate disagreement",
+    pct: 47,
+    primaryDriver: "Rapid open-model iteration and post-training gains",
+    mainConstraint: "Closed-model edge in reliability and multimodal benchmarks",
+    netEffect: "Signal is near-even with moderate disagreement on capability convergence.",
+  },
+  {
+    category: "Science",
+    categoryBg: "#F0FDF4",
+    categoryColor: "#166534",
+    headline: "Near-even at 51% with wide disagreement",
+    pct: 51,
+    primaryDriver: "Strong efficacy driving broad patient demand",
+    mainConstraint: "Coverage, pricing, and adherence limiting scale",
+    netEffect: "Signal is near-even with wide disagreement on adoption pace.",
+  },
+  {
+    category: "AI & ML",
+    categoryBg: C.humanBg,
+    categoryColor: C.humanTxt,
+    headline: "Unlikely at 22% with tight consensus",
+    pct: 22,
+    primaryDriver: "Automation reaching routine white-collar workflows",
+    mainConstraint: "Companies avoiding explicit AI attribution in layoffs",
+    netEffect: "Signal is skewed cautious with tight consensus across models.",
+  },
+];
+
+function SignalPreviewCard({ card }) {
+  const headlineColor = card.pct >= 60 ? C.aiTxt : card.pct >= 40 ? C.txt : "#92400E";
+  return (
+    <div
+      style={{
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        background: C.surface,
+        padding: "16px 18px",
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "2px 9px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 600,
+            backgroundColor: card.categoryBg,
+            color: card.categoryColor,
+            fontFamily: FF,
+          }}
+        >
+          {card.category}
+        </span>
+        <span style={{ fontFamily: FF, fontSize: 20, fontWeight: 800, color: C.txt, lineHeight: 1 }}>
+          {card.pct}%
+        </span>
+      </div>
+      <div style={{ fontFamily: FF, fontSize: 14, fontWeight: 600, color: headlineColor, marginBottom: 14, lineHeight: 1.35 }}>
+        {card.headline}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontFamily: FF, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: C.txt3, marginBottom: 3 }}>
+            Primary driver
+          </div>
+          <div style={{ fontFamily: FF, fontSize: 12, color: C.txt, lineHeight: 1.4 }}>
+            {card.primaryDriver}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontFamily: FF, fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: C.txt3, marginBottom: 3 }}>
+            Main constraint
+          </div>
+          <div style={{ fontFamily: FF, fontSize: 12, color: C.txt, lineHeight: 1.4 }}>
+            {card.mainConstraint}
+          </div>
+        </div>
+      </div>
+      <div
+        style={{
+          borderTop: `1px solid ${C.borderL}`,
+          paddingTop: 10,
+          fontFamily: FF,
+          fontSize: 12,
+          color: C.txt2,
+          fontStyle: "italic",
+          lineHeight: 1.45,
+        }}
+      >
+        {card.netEffect}
+      </div>
+    </div>
+  );
+}
+
+function ScrollingSignals({ isMobile }) {
+  const [paused, setPaused] = useState(false);
+
+  if (isMobile) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 28 }}>
+        {PREVIEW_CARDS.slice(0, 2).map((card, i) => (
+          <SignalPreviewCard key={i} card={card} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: 520,
+        overflow: "hidden",
+        borderRadius: 16,
+        position: "relative",
+      }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <style>{`
+        @keyframes fs-scroll-up {
+          from { transform: translateY(0); }
+          to   { transform: translateY(-50%); }
+        }
+      `}</style>
+      {/* Fade masks */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: 48,
+        background: "linear-gradient(to bottom, #F9FAFB, transparent)",
+        zIndex: 2, pointerEvents: "none",
+      }} />
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0, height: 64,
+        background: "linear-gradient(to top, #F9FAFB, transparent)",
+        zIndex: 2, pointerEvents: "none",
+      }} />
+      {/* Scrolling track — 2 copies for seamless loop */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          animationName: "fs-scroll-up",
+          animationDuration: "28s",
+          animationTimingFunction: "linear",
+          animationIterationCount: "infinite",
+          animationPlayState: paused ? "paused" : "running",
+        }}
+      >
+        {[...PREVIEW_CARDS, ...PREVIEW_CARDS].map((card, i) => (
+          <SignalPreviewCard key={i} card={card} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StartSignalModal({ onClose }) {
+  const { isMobile } = useBreakpoint();
+  const [question, setQuestion] = useState("");
+  const [domain, setDomain] = useState("");
+  const [timeframe, setTimeframe] = useState("");
+  const [context, setContext] = useState("");
+
+  const inputStyle = {
+    fontFamily: FF,
+    fontSize: 14,
+    color: C.txt,
+    background: C.bg,
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: "10px 12px",
+    width: "100%",
+    boxSizing: "border-box",
+    outline: "none",
+    resize: "vertical",
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: C.overlay,
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: C.surface,
+          borderRadius: 16,
+          padding: isMobile ? "28px 20px" : "36px 32px",
+          width: "100%",
+          maxWidth: 520,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <h2
+            style={{
+              fontFamily: FF,
+              fontSize: isMobile ? 18 : 20,
+              fontWeight: 700,
+              color: C.txt,
+              margin: 0,
+              lineHeight: 1.3,
+              maxWidth: 380,
+            }}
+          >
+            What question are you trying to answer?
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: C.txt3,
+              fontSize: 20,
+              lineHeight: 1,
+              padding: "0 0 0 12px",
+              flexShrink: 0,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Main prompt */}
+        <textarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="e.g. Will NVIDIA hit $100B revenue by FY2027?"
+          rows={4}
+          style={{ ...inputStyle, marginBottom: 20 }}
+          autoFocus
+        />
+
+        {/* Optional fields */}
+        <div
+          style={{
+            borderTop: `1px solid ${C.borderL}`,
+            paddingTop: 16,
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: FF,
+              fontSize: 11,
+              fontWeight: 600,
+              color: C.txt3,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 12,
+            }}
+          >
+            Optional
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="Domain (AI, Pharma, Policy...)"
+              style={inputStyle}
+            />
+            <input
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value)}
+              placeholder="Timeframe (e.g. by end of 2026)"
+              style={inputStyle}
+            />
+          </div>
+          <textarea
+            value={context}
+            onChange={(e) => setContext(e.target.value)}
+            placeholder="Any additional context..."
+            rows={2}
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{ ...secondaryBtn, fontSize: 14, padding: "10px 18px" }}
+          >
+            Cancel
+          </button>
+          <button
+            style={{ ...primaryBtn, fontSize: 14, padding: "10px 20px", opacity: question.trim() ? 1 : 0.5 }}
+            disabled={!question.trim()}
+          >
+            Start a Signal
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompanyPage({ onNav }) {
+  const { isMobile } = useBreakpoint();
+  const [showModal, setShowModal] = useState(false);
+
+  const sectionGap = { marginBottom: isMobile ? 52 : 64 };
+
+  const bulletItem = (text, muted = false) => (
+    <div
+      key={text}
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "baseline",
+        fontFamily: FF,
+        fontSize: 14,
+        color: muted ? C.txt2 : C.txt,
+        lineHeight: 1.55,
+      }}
+    >
+      <span style={{ color: muted ? C.txt3 : C.txt2, fontSize: 10, flexShrink: 0, marginTop: 2 }}>●</span>
+      <span>{text}</span>
+    </div>
+  );
+
+  return (
+    <>
+      {showModal && <StartSignalModal onClose={() => setShowModal(false)} />}
+      <div
+        style={{
+          maxWidth: 1100,
+          margin: "0 auto",
+          padding: isMobile ? "36px 16px 72px" : "56px 36px 88px",
+        }}
+      >
+        {/* ── Hero ─────────────────────────────────────────────── */}
+        <div
+          style={{
+            ...sectionGap,
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 380px",
+            gap: isMobile ? 0 : 52,
+            alignItems: "start",
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                fontFamily: FF,
+                fontSize: isMobile ? 28 : 38,
+                fontWeight: 800,
+                color: C.txt,
+                margin: "0 0 16px",
+                lineHeight: 1.2,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              See What the Right Experts Actually Believe
+            </h1>
+            <p
+              style={{
+                fontFamily: FF,
+                fontSize: isMobile ? 15 : 17,
+                color: C.txt2,
+                lineHeight: 1.65,
+                margin: "0 0 8px",
+                maxWidth: 500,
+              }}
+            >
+              We source, evaluate, and track expert forecasts so you can see who is right, where conviction is real, and where the market is mispriced across AI, biotech, and emerging systems.
+            </p>
+            <p
+              style={{
+                fontFamily: FF,
+                fontSize: isMobile ? 14 : 15,
+                color: C.txt3,
+                margin: "0 0 28px",
+              }}
+            >
+              Ask a question. Get a signal.
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setShowModal(true)}
+                style={{ ...primaryBtn, fontSize: 15, padding: "12px 22px" }}
+              >
+                Start a Signal
+              </button>
+              <button
+                onClick={() => onNav("index")}
+                style={{ ...secondaryBtn, fontSize: 15, padding: "12px 22px" }}
+              >
+                View Signals
+              </button>
+            </div>
+          </div>
+          <ScrollingSignals isMobile={isMobile} />
+        </div>
+
+        {/* ── Where Expert Opinion Breaks ───────────────────────── */}
+        <div style={sectionGap}>
+          <h2 style={{ fontFamily: FF, fontSize: isMobile ? 20 : 24, fontWeight: 700, color: C.txt, margin: "0 0 20px" }}>
+            Where Expert Opinion Breaks
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
+            {[
+              "Strong opinions, no probabilities",
+              "No way to know who has been right",
+              "Consensus is noisy and unreliable",
+              "No system to track belief over time",
+            ].map((t) => bulletItem(t, true))}
+          </div>
+
+          <div
+            style={{
+              fontFamily: FF,
+              fontSize: isMobile ? 16 : 18,
+              fontWeight: 700,
+              color: C.txt,
+              marginBottom: 16,
+            }}
+          >
+            We turn this into signals
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[
+              "Every question becomes a probability",
+              "Every prediction is scored on resolution",
+              "Every expert builds a track record",
+              "Signals aggregate into measurable conviction",
+            ].map((t) => bulletItem(t, false))}
+          </div>
+        </div>
+
+        {/* ── What You Actually See ─────────────────────────────── */}
+        <div style={sectionGap}>
+          <h2 style={{ fontFamily: FF, fontSize: isMobile ? 20 : 24, fontWeight: 700, color: C.txt, margin: "0 0 20px" }}>
+            What You Actually See
+          </h2>
+
+          {/* Signal output example */}
+          <div
+            style={{
+              border: `1px solid ${C.border}`,
+              borderRadius: 14,
+              background: C.surface,
+              padding: "18px 20px",
+              marginBottom: 24,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: FF,
+                fontSize: 11,
+                fontWeight: 600,
+                color: C.txt3,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                marginBottom: 10,
+              }}
+            >
+              Signal Output
+            </div>
+            <div
+              style={{
+                fontFamily: FF,
+                fontSize: isMobile ? 20 : 24,
+                fontWeight: 800,
+                color: C.txt,
+                marginBottom: 12,
+              }}
+            >
+              77% likely
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "6px 20px" }}>
+              {[
+                ["Driver", "AI capex growth"],
+                ["Constraint", "Customer concentration"],
+              ].map(([label, val]) => (
+                <div key={label} style={{ fontFamily: FF, fontSize: 13, color: C.txt2 }}>
+                  <span style={{ fontWeight: 600, color: C.txt }}>{label}</span>{"  "}{val}
+                </div>
+              ))}
+            </div>
+            <div
+              style={{
+                fontFamily: FF,
+                fontSize: 13,
+                color: C.txt2,
+                fontStyle: "italic",
+                marginTop: 10,
+                paddingTop: 10,
+                borderTop: `1px solid ${C.borderL}`,
+              }}
+            >
+              Bullish with tight consensus
+            </div>
+          </div>
+
+          {/* What this gives you */}
+          <div>
+            <div style={{ fontFamily: FF, fontSize: 14, fontWeight: 700, color: C.txt, marginBottom: 10 }}>
+              What this gives you
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {[
+                "Where experts agree vs diverge",
+                "What is driving the outcome",
+                "Who has been consistently right",
+              ].map((t) => bulletItem(t, true))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Market Intelligence Report ───────────────────────── */}
+        {(() => {
+          const mirTrend = [
+            { month: "Jan", v: 68 },
+            { month: "Feb", v: 71 },
+            { month: "Mar", v: 70 },
+            { month: "Apr", v: 74 },
+            { month: "May", v: 73 },
+            { month: "Jun", v: 77 },
+          ];
+          return (
+            <div style={sectionGap}>
+              <div
+                style={{
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 16,
+                  background: C.surface,
+                  overflow: "hidden",
+                  fontFamily: FF,
+                }}
+              >
+                {/* Header */}
+                <div
+                  style={{
+                    padding: isMobile ? "18px 18px 16px" : "22px 28px 18px",
+                    borderBottom: `1px solid ${C.borderL}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: C.txt3,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Signal Report
+                  </div>
+                  <div
+                    style={{
+                      fontSize: isMobile ? 16 : 19,
+                      fontWeight: 700,
+                      color: C.txt,
+                      marginBottom: 10,
+                    }}
+                  >
+                    AI Infrastructure Demand Outlook
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 26, fontWeight: 800, color: C.txt, lineHeight: 1 }}>77%</span>
+                    <span style={{ fontSize: 13, color: C.txt2 }}>likely</span>
+                    <span style={{ width: 1, height: 14, background: C.border, display: "inline-block" }} />
+                    <span style={{ fontSize: 13, color: C.txt2 }}>Tight consensus</span>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                  }}
+                >
+                  {/* Left: labeled fields */}
+                  <div
+                    style={{
+                      padding: isMobile ? "18px 18px" : "22px 28px",
+                      borderRight: isMobile ? "none" : `1px solid ${C.borderL}`,
+                      borderBottom: isMobile ? `1px solid ${C.borderL}` : "none",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 18,
+                    }}
+                  >
+                    {[
+                      ["Primary Driver", "AI infrastructure demand"],
+                      ["Main Constraint", "Customer concentration"],
+                      ["Expert Disagreement", "Moderate disagreement across investor vs researcher views"],
+                    ].map(([label, val]) => (
+                      <div key={label}>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: C.txt3,
+                            letterSpacing: "0.05em",
+                            textTransform: "uppercase",
+                            marginBottom: 4,
+                          }}
+                        >
+                          {label}
+                        </div>
+                        <div style={{ fontSize: 14, color: C.txt, lineHeight: 1.45 }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Right: trend chart */}
+                  <div style={{ padding: isMobile ? "18px 18px" : "22px 28px" }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: C.txt3,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        marginBottom: 14,
+                      }}
+                    >
+                      Signal Evolution
+                    </div>
+                    <ResponsiveContainer width="100%" height={110}>
+                      <ComposedChart data={mirTrend} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+                        <defs>
+                          <linearGradient id="mirAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={C.human} stopOpacity={0.1} />
+                            <stop offset="100%" stopColor={C.human} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fontSize: 10, fill: C.txt3, fontFamily: FF }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis domain={[60, 85]} hide />
+                        <Area
+                          type="monotone"
+                          dataKey="v"
+                          fill="url(#mirAreaGrad)"
+                          stroke="none"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="v"
+                          stroke={C.human}
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div
+                  style={{
+                    padding: isMobile ? "11px 18px" : "12px 28px",
+                    borderTop: `1px solid ${C.borderL}`,
+                    fontSize: 12,
+                    color: C.txt3,
+                  }}
+                >
+                  Based on 12 expert forecasts and 3 AI models
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Expert Disagreement + Forecaster Performance ─────── */}
+        <div
+          style={{
+            ...sectionGap,
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: 16,
+          }}
+        >
+          {/* Expert Disagreement Panel */}
+          <div
+            style={{
+              border: `1px solid ${C.border}`,
+              borderRadius: 14,
+              background: C.surface,
+              padding: "20px 22px",
+              fontFamily: FF,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.txt, marginBottom: 20 }}>
+              Where experts disagree
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[
+                ["Researcher", 65],
+                ["Investor", 48],
+                ["Operator", 55],
+                ["AI", 52],
+              ].map(([label, pct]) => (
+                <div key={label}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 6,
+                      fontSize: 12,
+                      color: C.txt2,
+                    }}
+                  >
+                    <span>{label}</span>
+                    <span style={{ fontWeight: 600, color: C.txt }}>{pct}%</span>
+                  </div>
+                  <div
+                    style={{
+                      background: C.borderL,
+                      borderRadius: 4,
+                      height: 5,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${pct}%`,
+                        background: C.txt2,
+                        height: "100%",
+                        borderRadius: 4,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Forecaster Performance Panel */}
+          <div
+            style={{
+              border: `1px solid ${C.border}`,
+              borderRadius: 14,
+              background: C.surface,
+              padding: "20px 22px",
+              fontFamily: FF,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.txt, marginBottom: 16 }}>
+              Top Forecasters
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["Name", "Accuracy", "Calibration"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: C.txt3,
+                        textAlign: "left",
+                        paddingBottom: 10,
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
+                        fontFamily: FF,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["Sarah Chen", "87%", "0.82"],
+                  ["Claude Analyst", "90%", "0.87"],
+                  ["Marcus Reeves", "84%", "0.79"],
+                ].map(([name, acc, cal]) => (
+                  <tr key={name} style={{ borderTop: `1px solid ${C.borderL}` }}>
+                    <td
+                      style={{
+                        fontSize: 13,
+                        color: C.txt,
+                        fontWeight: 500,
+                        padding: "11px 0",
+                        fontFamily: FF,
+                      }}
+                    >
+                      {name}
+                    </td>
+                    <td
+                      style={{
+                        fontSize: 13,
+                        color: C.txt2,
+                        padding: "11px 0",
+                        fontFamily: FF,
+                      }}
+                    >
+                      {acc}
+                    </td>
+                    <td
+                      style={{
+                        fontSize: 13,
+                        color: C.txt2,
+                        padding: "11px 0",
+                        fontFamily: FF,
+                      }}
+                    >
+                      {cal}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── Final CTA ─────────────────────────────────────────── */}
+        <div
+          style={{
+            borderRadius: 16,
+            background: C.ink,
+            padding: isMobile ? "32px 24px" : "44px 48px",
+          }}
+        >
+          <h2
+            style={{
+              fontFamily: FF,
+              fontSize: isMobile ? 20 : 24,
+              fontWeight: 700,
+              color: "#fff",
+              margin: "0 0 10px",
+            }}
+          >
+            Start a Signal
+          </h2>
+          <p
+            style={{
+              fontFamily: FF,
+              fontSize: 15,
+              color: "rgba(255,255,255,0.65)",
+              margin: "0 0 24px",
+              lineHeight: 1.6,
+              maxWidth: 400,
+            }}
+          >
+            Ask a question. Get a signal.
+          </p>
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              ...primaryBtn,
+              background: "#fff",
+              color: C.ink,
+              fontSize: 15,
+              padding: "12px 24px",
+            }}
+          >
+            Start a Signal
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1830,7 +2942,7 @@ function AuthGate({
             lineHeight: 1.5,
           }}>
             <span style={{ fontWeight: 600, color: C.txt }}>
-              {(pendingDraft.probability ?? 50) >= 50 ? "YES" : "NO"} · {pendingDraft.probability ?? 50}%
+              {(pendingDraft.probability ?? 50) >= 50 ? "YES" : "NO"} · {fmtPct(pendingDraft.probability ?? 50)}
             </span>
             {pendingDraft.stake ? <> · {pendingDraft.stake} pts staked</> : null}
             {" — saved automatically after sign-up."}
@@ -1985,6 +3097,7 @@ function RewardOverlay({ onDone }) {
 
 export default function App() {
   const [page, setPage] = useState("index");
+  const [selectedCategory, setSelectedCategory] = useCategoryParam();
   const [signals, setSignals] = useState([]);
   const [activeSignalId, setActiveSignalId] = useState(null);
   const [userForecasts, setUserForecasts] = useState({});
@@ -2000,6 +3113,7 @@ export default function App() {
   const [pendingForecast, setPendingForecast] = useState(null);
   const [showRewardOverlay, setShowRewardOverlay] = useState(false);
   const [rewardJustLanded, setRewardJustLanded] = useState(false);
+  const [aiSummary, setAiSummary] = useState(null);
 
   const [authMode, setAuthMode] = useState("signup");
   const [authEmail, setAuthEmail] = useState("");
@@ -2020,10 +3134,13 @@ export default function App() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("FETCH SIGNALS ERROR:", error);
+      console.error("[fetchSignals] ERROR:", error);
       return;
     }
 
+    console.log(`[fetchSignals] DB returned ${(data || []).length} active signal(s):`,
+      (data || []).map(s => ({ id: s.id, status: s.status, question: s.question?.slice(0, 60) }))
+    );
     setSignals(data || []);
   };
 
@@ -2080,6 +3197,33 @@ export default function App() {
       setActiveSignalId(signals[0].id);
     }
   }, [signals, activeSignalId]);
+
+  const fetchAiSummary = async (signalId) => {
+    const { data, error } = await supabase
+      .from("ai_forecast_summaries")
+      .select("summary")
+      .eq("question_id", signalId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[fetchAiSummary] error for", signalId, ":", error.message);
+      setAiSummary(null);
+      return;
+    }
+
+    const payload = data?.summary ?? null;
+    console.log("[fetchAiSummary] loaded for", signalId, ":", payload);
+    console.log("[fetchAiSummary] synthesis:", payload?.synthesis ?? null);
+    setAiSummary(payload);
+  };
+
+  useEffect(() => {
+    if (activeSignalId) {
+      fetchAiSummary(activeSignalId);
+    } else {
+      setAiSummary(null);
+    }
+  }, [activeSignalId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchUserPoints = async (userId) => {
     if (!userId) return null;
@@ -2169,6 +3313,7 @@ export default function App() {
   }, [liveHuman, liveContributors, activeSignalBase]);
 
   const hydratedSignals = useMemo(() => {
+    console.log(`[hydratedSignals] rendering ${signals.length} card(s) from DB`);
     return signals.map((signal) => {
       const rows = forecastRowsBySignal[String(signal.id)] || [];
       const hasHumanData = rows.length > 0;
@@ -2462,6 +3607,8 @@ export default function App() {
         onSignOut={handleSignOut}
         userStats={currentUser && userPointsBalance != null ? { points: userPointsBalance, streak: null, accuracy: null } : null}
         rewardJustLanded={rewardJustLanded}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
       />
 
       {bonusMessage && (
@@ -2493,6 +3640,7 @@ export default function App() {
         <SignalsIndexPage
           signals={hydratedSignals}
           userForecasts={userForecasts}
+          selectedCategory={selectedCategory}
           onOpen={(signal) => {
             setSuccessMessage("");
             setActiveSignalId(signal.id);
@@ -2508,6 +3656,11 @@ export default function App() {
             setSuccessMessage("");
             setPage("index");
           }}
+          onNavigate={(sig) => {
+            setSuccessMessage("");
+            setActiveSignalId(sig.id);
+          }}
+          allSignals={hydratedSignals}
           onSave={handleSaveForecast}
           userForecast={userForecast}
           liveHuman={liveHuman}
@@ -2517,12 +3670,14 @@ export default function App() {
           isSaving={isSaving}
           successMessage={successMessage}
           isAuthenticated={!!currentUser}
+          aiSummary={aiSummary}
         />
       )}
 
-      {page === "leaderboard" && <LeaderboardPage />}
+      {page === "leaderboard" && <LeaderboardPage selectedCategory={selectedCategory} />}
       {page === "models" && <AIModelsPage />}
       {page === "methodology" && <MethodologyPage />}
+      {page === "company" && <CompanyPage onNav={(p) => setPage(p)} />}
 
       {showAuthGate && (
         <AuthGate
